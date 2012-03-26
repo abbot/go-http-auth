@@ -38,7 +38,7 @@ func MD5Crypt(password, salt, magic []byte) []byte {
 	d2.Write(salt)
 	d2.Write(password)
 
-	for i, mixin := 0, d2.Sum(); i < len(password); i++ {
+	for i, mixin := 0, d2.Sum(nil); i < len(password); i++ {
 		d.Write([]byte{mixin[i%16]})
 	}
 
@@ -50,7 +50,7 @@ func MD5Crypt(password, salt, magic []byte) []byte {
 		}
 	}
 
-	final := d.Sum()
+	final := d.Sum(nil)
 
 	for i := 0; i < 1000; i++ {
 		d2 := md5.New()
@@ -73,7 +73,7 @@ func MD5Crypt(password, salt, magic []byte) []byte {
 		} else {
 			d2.Write(final)
 		}
-		final = d2.Sum()
+		final = d2.Sum(nil)
 	}
 
 	result := make([]byte, 0, 22)

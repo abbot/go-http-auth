@@ -1,12 +1,12 @@
 package auth
 
 import (
-	"http"
 	"fmt"
-	"strings"
-	"strconv"
-	"time"
+	"net/http"
 	"sort"
+	"strconv"
+	"strings"
+	"time"
 )
 
 type digest_client struct {
@@ -61,7 +61,7 @@ func (a *DigestAuth) Purge(count int) {
 	cache := digest_cache(entries)
 	sort.Sort(cache)
 	for _, client := range cache[:count] {
-		a.clients[client.nonce] = a.clients[client.nonce], false
+		delete(a.clients, client.nonce)
 	}
 }
 
@@ -74,7 +74,7 @@ func (a *DigestAuth) RequireAuth(w http.ResponseWriter, r *http.Request) {
 		a.Purge(a.ClientCacheTolerance * 2)
 	}
 	nonce := RandomKey()
-	a.clients[nonce] = &digest_client{nc: 0, last_seen: time.Nanoseconds()}
+	a.clients[nonce] = &digest_client{nc: 0, last_seen: time.Now().UnixNano()}
 	w.Header().Set("WWW-Authenticate",
 		fmt.Sprintf(`Digest realm="%s", nonce="%s", opaque="%s", algorithm="MD5", qop="auth"`,
 			a.Realm, nonce, a.Opaque))
@@ -134,7 +134,7 @@ func (da *DigestAuth) CheckAuth(r *http.Request) (username string, authinfo *str
 	// At this point crypto checks are completed and validated.
 	// Now check if the session is valid.
 
-	nc, err := strconv.Btoui64(auth["nc"], 16)
+	nc, err := strconv.ParseUint(auth["nc"], 16, 64)
 	if err != nil {
 		return
 	}
@@ -146,7 +146,7 @@ func (da *DigestAuth) CheckAuth(r *http.Request) (username string, authinfo *str
 			return
 		}
 		client.nc = nc
-		client.last_seen = time.Nanoseconds()
+		client.last_seen = time.Now().UnixNano()
 	}
 
 	resp_HA2 := H(":" + auth["uri"])

@@ -1,10 +1,10 @@
 package auth
 
 import (
-	"http"
-	"strings"
-	"encoding/base64"
 	"crypto/sha1"
+	"encoding/base64"
+	"net/http"
+	"strings"
 )
 
 type BasicAuth struct {
@@ -40,7 +40,7 @@ func (a *BasicAuth) CheckAuth(r *http.Request) string {
 	if passwd[:5] == "{SHA}" {
 		d := sha1.New()
 		d.Write([]byte(pair[1]))
-		if passwd[5:] != base64.StdEncoding.EncodeToString(d.Sum()) {
+		if passwd[5:] != base64.StdEncoding.EncodeToString(d.Sum(nil)) {
 			return ""
 		}
 	} else {

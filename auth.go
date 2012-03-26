@@ -1,6 +1,6 @@
 package auth
 
-import "http"
+import "net/http"
 
 /* 
  Request handlers must take AuthenticatedRequest instead of http.Request

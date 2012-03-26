@@ -26,5 +26,5 @@ func RandomKey() string {
 func H(data string) string {
 	digest := md5.New()
 	digest.Write([]byte(data))
-	return fmt.Sprintf("%x", digest.Sum())
+	return fmt.Sprintf("%x", digest.Sum(nil))
 }

@@ -1,9 +1,9 @@
 package auth
 
 import (
-	"testing"
-	"http"
 	"encoding/base64"
+	"net/http"
+	"testing"
 )
 
 func TestAuthBasic(t *testing.T) {

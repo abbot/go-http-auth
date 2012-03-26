@@ -1,6 +1,6 @@
 package auth
 
-import "csv"
+import "encoding/csv"
 import "os"
 
 /* 
@@ -15,7 +15,7 @@ type SecretProvider func(user, realm string) string
 */
 type File struct {
 	Path string
-	Info *os.FileInfo
+	Info os.FileInfo
 	/* must be set in inherited types during initialization */
 	Reload func()
 }
@@ -25,7 +25,7 @@ func (f *File) ReloadIfNeeded() {
 	if err != nil {
 		panic(err)
 	}
-	if f.Info == nil || f.Info.Mtime_ns != info.Mtime_ns {
+	if f.Info == nil || f.Info.ModTime() != info.ModTime() {
 		f.Info = info
 		f.Reload()
 	}
