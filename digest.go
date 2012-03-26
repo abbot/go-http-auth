@@ -118,6 +118,11 @@ func (da *DigestAuth) CheckAuth(r *http.Request) (username string, authinfo *str
 		return
 	}
 
+	// Check if the requested URI matches auth header
+	if r.URL == nil || len(auth["uri"]) > len(r.URL.Path) || r.URL.Path[:len(auth["uri"])] != auth["uri"] {
+		return
+	}
+
 	HA1 := da.Secrets(auth["username"], da.Realm)
 	HA2 := H(r.Method + ":" + auth["uri"])
 	KD := H(strings.Join([]string{HA1, auth["nonce"], auth["nc"], auth["cnonce"], auth["qop"], HA2}, ":"))

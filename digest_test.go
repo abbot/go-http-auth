@@ -4,11 +4,12 @@ import (
 	"testing"
 	"http"
 	"time"
+	"url"
 )
 
 func TestAuthDigest(t *testing.T) {
 	secrets := HtdigestFileProvider("test.htdigest")
-	da := &DigestAuth{Opaque: "f5f248692a57f26ea430abeef2051c7a",
+	da := &DigestAuth{Opaque: "U7H+ier3Ae8Skd/g",
 		Realm:   "example.com",
 		Secrets: secrets,
 		clients: map[string]*digest_client{}}
@@ -22,16 +23,35 @@ func TestAuthDigest(t *testing.T) {
 	if u, _ := da.CheckAuth(r); u != "" {
 		t.Fatal("non-empty auth for bad request header")
 	}
-	r.Header.Set("Authorization", `Digest username="test", realm="example.com", nonce="954dc0a95652bc4ac12270f1394d6661", uri="/", cnonce="NDk0MzU2", nc=00000001, qop="auth", response="00f37cc3866798916ce0186fe8b4e8f0", opaque="f5f248692a57f26ea430abeef2051c7a", algorithm="MD5"`)
+	r.Header.Set("Authorization", `Digest username="test", realm="example.com", nonce="Vb9BP/h81n3GpTTB", uri="/t2", cnonce="NjE4MTM2", nc=00000001, qop="auth", response="ffc357c4eba74773c8687e0bc724c9a3", opaque="U7H+ier3Ae8Skd/g", algorithm="MD5"`)
 	if u, _ := da.CheckAuth(r); u != "" {
 		t.Fatal("non-empty auth for unknown client")
 	}
 
-	da.clients["954dc0a95652bc4ac12270f1394d6661"] = &digest_client{nc: 0, last_seen: time.Nanoseconds()}
+	r.URL, _ = url.Parse("/t2")
+	da.clients["Vb9BP/h81n3GpTTB"] = &digest_client{nc: 0, last_seen: time.Nanoseconds()}
 	if u, _ := da.CheckAuth(r); u != "test" {
 		t.Fatal("empty auth for legitimate client")
 	}
 	if u, _ := da.CheckAuth(r); u != "" {
 		t.Fatal("non-empty auth for outdated nc")
+	}
+
+	r.URL, _ = url.Parse("/")
+	da.clients["Vb9BP/h81n3GpTTB"] = &digest_client{nc: 0, last_seen: time.Nanoseconds()}
+	if u, _ := da.CheckAuth(r); u != "" {
+		t.Fatal("non-empty auth for bad request path")
+	}
+
+	r.URL, _ = url.Parse("/t3")
+	da.clients["Vb9BP/h81n3GpTTB"] = &digest_client{nc: 0, last_seen: time.Nanoseconds()}
+	if u, _ := da.CheckAuth(r); u != "" {
+		t.Fatal("non-empty auth for bad request path")
+	}
+
+	da.clients["+RbVXSbIoa1SaJk1"] = &digest_client{nc: 0, last_seen: time.Nanoseconds()}
+	r.Header.Set("Authorization", `Digest username="test", realm="example.com", nonce="+RbVXSbIoa1SaJk1", uri="/", cnonce="NjE4NDkw", nc=00000001, qop="auth", response="c08918024d7faaabd5424654c4e3ad1c", opaque="U7H+ier3Ae8Skd/g", algorithm="MD5"`)
+	if u, _ := da.CheckAuth(r); u != "test" {
+		t.Fatal("empty auth for valid request in subpath")
 	}
 }
