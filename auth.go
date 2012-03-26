@@ -1,4 +1,4 @@
-package http_auth_digest
+package auth
 
 import "http"
 

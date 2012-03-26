@@ -1,4 +1,4 @@
-package http_auth_digest
+package auth
 
 import "encoding/base64"
 import "crypto/md5"
