@@ -168,8 +168,6 @@ const DefaultClientCacheTolerance = 100
 
  realm: The authentication realm.
 
- uri: Protection base uri for the Authorization header.
-
  secrets: SecretProvider which must return HA1 digests for the same
  realm as above.
 
@@ -177,7 +175,7 @@ const DefaultClientCacheTolerance = 100
  clients cache, second is the tolerance for the cache. Default values
  are used if not given.
 */
-func DigestAuthenticator(realm string, uri string, secrets SecretProvider, cache ...int) Authenticator {
+func DigestAuthenticator(realm string, secrets SecretProvider, cache ...int) Authenticator {
 	da := &DigestAuth{
 		Opaque:               RandomKey(),
 		Realm:                realm,
