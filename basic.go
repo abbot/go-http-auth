@@ -34,6 +34,9 @@ func (a *BasicAuth) CheckAuth(r *http.Request) string {
 		return ""
 	}
 	passwd := a.Secrets(pair[0], a.Realm)
+	if passwd == "" {
+		return ""
+	}
 	if passwd[:5] == "{SHA}" {
 		d := sha1.New()
 		d.Write([]byte(pair[1]))
