@@ -35,3 +35,14 @@ type AuthenticatedHandlerFunc func(http.ResponseWriter, *AuthenticatedRequest)
  it returns a handler which initiates the authentication procedure.
 */
 type Authenticator func(AuthenticatedHandlerFunc) http.HandlerFunc
+
+type AuthenticatorInterface interface {
+	Wrap(AuthenticatedHandlerFunc) http.HandlerFunc
+}
+
+func JustCheck(auth AuthenticatorInterface, wrapped http.HandlerFunc) http.HandlerFunc {
+	return auth.Wrap(func(w http.ResponseWriter, ar *AuthenticatedRequest) {
+		ar.Header.Set("X-Authenticated-Username", ar.Username)
+		wrapped(w, &ar.Request)
+	})
+}

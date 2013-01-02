@@ -3,9 +3,11 @@ package auth
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -15,9 +17,10 @@ type digest_client struct {
 }
 
 type DigestAuth struct {
-	Realm   string
-	Opaque  string
-	Secrets SecretProvider
+	Realm            string
+	Opaque           string
+	Secrets          SecretProvider
+	PlainTextSecrets bool
 
 	/* 
 	 Approximate size of Client's Cache. When actual number of
@@ -29,6 +32,7 @@ type DigestAuth struct {
 	ClientCacheTolerance int
 
 	clients map[string]*digest_client
+	mutex   sync.Mutex
 }
 
 type digest_cache_entry struct {
@@ -111,6 +115,8 @@ func DigestAuthParams(r *http.Request) map[string]string {
  Authentication-Info response header.
 */
 func (da *DigestAuth) CheckAuth(r *http.Request) (username string, authinfo *string) {
+	da.mutex.Lock()
+	defer da.mutex.Unlock()
 	username = ""
 	authinfo = nil
 	auth := DigestAuthParams(r)
@@ -119,11 +125,21 @@ func (da *DigestAuth) CheckAuth(r *http.Request) (username string, authinfo *str
 	}
 
 	// Check if the requested URI matches auth header
-	if r.URL == nil || len(auth["uri"]) > len(r.URL.Path) || r.URL.Path[:len(auth["uri"])] != auth["uri"] {
+	switch u, err := url.Parse(auth["uri"]); {
+	case err != nil:
+		return
+	case r.URL == nil:
+		return
+	case len(u.Path) > len(r.URL.Path):
+		return
+	case !strings.HasPrefix(r.URL.Path, u.Path):
 		return
 	}
 
 	HA1 := da.Secrets(auth["username"], da.Realm)
+	if da.PlainTextSecrets {
+		HA1 = H(auth["username"] + ":" + da.Realm + ":" + HA1)
+	}
 	HA2 := H(r.Method + ":" + auth["uri"])
 	KD := H(strings.Join([]string{HA1, auth["nonce"], auth["nc"], auth["cnonce"], auth["qop"], HA2}, ":"))
 
@@ -163,49 +179,48 @@ const DefaultClientCacheSize = 1000
 const DefaultClientCacheTolerance = 100
 
 /* 
- DigestAuthenticator returns an Authenticator which uses HTTP Digest
+ Wrap returns an Authenticator which uses HTTP Digest
  authentication. Arguments:
 
  realm: The authentication realm.
 
  secrets: SecretProvider which must return HA1 digests for the same
  realm as above.
-
- cache: Optional one or two arguments, first is the size of the
- clients cache, second is the tolerance for the cache. Default values
- are used if not given.
 */
-func DigestAuthenticator(realm string, secrets SecretProvider, cache ...int) Authenticator {
+func (a *DigestAuth) Wrap(wrapped AuthenticatedHandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if username, authinfo := a.CheckAuth(r); username == "" {
+			a.RequireAuth(w, r)
+		} else {
+			ar := &AuthenticatedRequest{Request: *r, Username: username}
+			if authinfo != nil {
+				w.Header().Set("Authentication-Info", *authinfo)
+			}
+			wrapped(w, ar)
+		}
+	}
+}
+
+/* 
+ JustCheck returns function which converts an http.HandlerFunc into a
+ http.HandlerFunc which requires authentication. Username is passed as
+ an extra X-Authenticated-Username header.
+*/
+func (a *DigestAuth) JustCheck(wrapped http.HandlerFunc) http.HandlerFunc {
+	return a.Wrap(func(w http.ResponseWriter, ar *AuthenticatedRequest) {
+		ar.Header.Set("X-Authenticated-Username", ar.Username)
+		wrapped(w, &ar.Request)
+	})
+}
+
+func NewDigestAuthenticator(realm string, secrets SecretProvider) *DigestAuth {
 	da := &DigestAuth{
 		Opaque:               RandomKey(),
 		Realm:                realm,
 		Secrets:              secrets,
+		PlainTextSecrets:     false,
 		ClientCacheSize:      DefaultClientCacheSize,
 		ClientCacheTolerance: DefaultClientCacheTolerance,
 		clients:              map[string]*digest_client{}}
-
-	switch {
-	case len(cache) > 0:
-		da.ClientCacheSize = cache[0]
-		fallthrough
-	case len(cache) > 1:
-		da.ClientCacheTolerance = cache[1]
-		fallthrough
-	case len(cache) > 2:
-		panic("Unknown extra arguments to DigestAuthenticator")
-	}
-
-	return func(wrapped AuthenticatedHandlerFunc) http.HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request) {
-			if username, authinfo := da.CheckAuth(r); username == "" {
-				da.RequireAuth(w, r)
-			} else {
-				dr := &AuthenticatedRequest{Request: *r, Username: username}
-				if authinfo != nil {
-					w.Header().Set("Authentication-Info", *authinfo)
-				}
-				wrapped(w, dr)
-			}
-		}
-	}
+	return da
 }

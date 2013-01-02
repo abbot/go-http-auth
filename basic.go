@@ -72,16 +72,17 @@ func (a *BasicAuth) RequireAuth(w http.ResponseWriter, r *http.Request) {
  required authentication headers, or calls the wrapped function with
  authenticated username in the AuthenticatedRequest.
 */
-func BasicAuthenticator(realm string, secrets SecretProvider) Authenticator {
-	a := &BasicAuth{Realm: realm, Secrets: secrets}
-	return func(wrapped AuthenticatedHandlerFunc) http.HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request) {
-			if username := a.CheckAuth(r); username == "" {
-				a.RequireAuth(w, r)
-			} else {
-				ar := &AuthenticatedRequest{Request: *r, Username: username}
-				wrapped(w, ar)
-			}
+func (a *BasicAuth) Wrap(wrapped AuthenticatedHandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if username := a.CheckAuth(r); username == "" {
+			a.RequireAuth(w, r)
+		} else {
+			ar := &AuthenticatedRequest{Request: *r, Username: username}
+			wrapped(w, ar)
 		}
 	}
+}
+
+func NewBasicAuthenticator(realm string, secrets SecretProvider) *BasicAuth {
+	return &BasicAuth{Realm: realm, Secrets: secrets}
 }
