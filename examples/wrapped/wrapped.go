@@ -1,4 +1,4 @@
-/* 
+/*
  Example demonstrating how to wrap an application which is unaware of
  authenticated requests with a "pass-through" authentication
 
@@ -10,8 +10,8 @@
 package main
 
 import (
-	auth ".."
 	"fmt"
+	"github.com/abbot/go-http-auth"
 	"net/http"
 )
 
