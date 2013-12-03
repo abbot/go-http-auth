@@ -1,4 +1,6 @@
-/* 
+// +build ignore
+
+/*
  Example demonstrating how to wrap an application which is unaware of
  authenticated requests with a "pass-through" authentication
 

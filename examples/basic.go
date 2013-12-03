@@ -1,3 +1,5 @@
+// +build ignore
+
 /*
  Example application using Basic auth
 
