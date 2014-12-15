@@ -83,6 +83,18 @@ func (a *BasicAuth) Wrap(wrapped AuthenticatedHandlerFunc) http.HandlerFunc {
 	}
 }
 
+/*
+ JustCheck returns function which converts an http.HandlerFunc into a
+ http.HandlerFunc which requires authentication. Username is passed as
+ an extra X-Authenticated-Username header.
+*/
+func (a *BasicAuth) JustCheck(wrapped http.HandlerFunc) http.HandlerFunc {
+	return a.Wrap(func(w http.ResponseWriter, ar *AuthenticatedRequest) {
+		ar.Header.Set("X-Authenticated-Username", ar.Username)
+		wrapped(w, &ar.Request)
+	})
+}
+
 func NewBasicAuthenticator(realm string, secrets SecretProvider) *BasicAuth {
 	return &BasicAuth{Realm: realm, Secrets: secrets}
 }
