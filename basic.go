@@ -33,7 +33,7 @@ func (a *BasicAuth) CheckAuth(r *http.Request) string {
 	if len(pair) != 2 {
 		return ""
 	}
-	passwd := a.Secrets(pair[0], a.Realm)
+	passwd := a.Secrets(r, pair[0], a.Realm)
 	if passwd == "" {
 		return ""
 	}
