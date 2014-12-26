@@ -2,13 +2,14 @@ package auth
 
 import "encoding/csv"
 import "os"
+import "net/http"
 
-/* 
+/*
  SecretProvider is used by authenticators. Takes user name and realm
  as an argument, returns secret required for authentication (HA1 for
  digest authentication, properly encrypted password for basic).
 */
-type SecretProvider func(user, realm string) string
+type SecretProvider func(r *http.Request, user, realm string) string
 
 /*
  Common functions for file auto-reloading
@@ -73,7 +74,7 @@ func reload_htdigest(hf *HtdigestFile) {
 func HtdigestFileProvider(filename string) SecretProvider {
 	hf := &HtdigestFile{File: File{Path: filename}}
 	hf.Reload = func() { reload_htdigest(hf) }
-	return func(user, realm string) string {
+	return func(r *http.Request, user, realm string) string {
 		hf.ReloadIfNeeded()
 		_, exists := hf.Users[realm]
 		if !exists {
@@ -125,7 +126,7 @@ func reload_htpasswd(h *HtpasswdFile) {
 func HtpasswdFileProvider(filename string) SecretProvider {
 	h := &HtpasswdFile{File: File{Path: filename}}
 	h.Reload = func() { reload_htpasswd(h) }
-	return func(user, realm string) string {
+	return func(r *http.Request, user, realm string) string {
 		h.ReloadIfNeeded()
 		password, exists := h.Users[user]
 		if !exists {
