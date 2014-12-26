@@ -87,7 +87,7 @@ func HtdigestFileProvider(filename string) (SecretProvider,error) {
 			return ""
 		}
 		return digest
-	}
+	},nil
 }
 
 /*
@@ -138,5 +138,5 @@ func HtpasswdFileProvider(filename string) (SecretProvider,error) {
 			return ""
 		}
 		return password
-	}
+	},nil
 }
