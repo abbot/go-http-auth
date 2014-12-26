@@ -124,8 +124,8 @@ func reload_htpasswd(h *HtpasswdFile) {
 */
 func HtpasswdFileProvider(filename string) SecretProvider,error {
 	if _, err := os.Stat(filename); err != nil {
-	    return nil,err
-    }
+		return nil,err
+	}
 	h := &HtpasswdFile{File: File{Path: filename}}
 	h.Reload = func() { reload_htpasswd(h) }
 	return func(user, realm string) string {
