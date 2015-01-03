@@ -7,6 +7,8 @@ import "os"
  SecretProvider is used by authenticators. Takes user name and realm
  as an argument, returns secret required for authentication (HA1 for
  digest authentication, properly encrypted password for basic).
+ 
+ Returning an empty string means failing the authentication.
 */
 type SecretProvider func(user, realm string) string
 
