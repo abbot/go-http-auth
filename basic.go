@@ -38,7 +38,7 @@ func (a *BasicAuth) CheckAuth(r *http.Request) string {
 	if passwd == "" {
 		return ""
 	}
-	if passwd[:5] == "{SHA}" {
+	if strings.HasPrefix(passwd, "{SHA}") {
 		d := sha1.New()
 		d.Write([]byte(pair[1]))
 		if subtle.ConstantTimeCompare([]byte(passwd[5:]), []byte(base64.StdEncoding.EncodeToString(d.Sum(nil)))) != 1 {
