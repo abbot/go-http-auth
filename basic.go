@@ -2,6 +2,7 @@ package auth
 
 import (
 	"crypto/sha1"
+	"crypto/subtle"
 	"encoding/base64"
 	"net/http"
 	"strings"
@@ -40,7 +41,7 @@ func (a *BasicAuth) CheckAuth(r *http.Request) string {
 	if passwd[:5] == "{SHA}" {
 		d := sha1.New()
 		d.Write([]byte(pair[1]))
-		if passwd[5:] != base64.StdEncoding.EncodeToString(d.Sum(nil)) {
+		if subtle.ConstantTimeCompare([]byte(passwd[5:]), []byte(base64.StdEncoding.EncodeToString(d.Sum(nil)))) != 1 {
 			return ""
 		}
 	} else {
@@ -48,7 +49,7 @@ func (a *BasicAuth) CheckAuth(r *http.Request) string {
 		if e == nil {
 			return ""
 		}
-		if passwd != string(MD5Crypt([]byte(pair[1]), e.Salt, e.Magic)) {
+		if subtle.ConstantTimeCompare([]byte(passwd), MD5Crypt([]byte(pair[1]), e.Salt, e.Magic)) != 1 {
 			return ""
 		}
 	}

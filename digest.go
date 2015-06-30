@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"crypto/subtle"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -22,11 +23,11 @@ type DigestAuth struct {
 	Secrets          SecretProvider
 	PlainTextSecrets bool
 
-	/* 
-	 Approximate size of Client's Cache. When actual number of
-	 tracked client nonces exceeds
-	 ClientCacheSize+ClientCacheTolerance, ClientCacheTolerance*2
-	 older entries are purged.
+	/*
+	   Approximate size of Client's Cache. When actual number of
+	   tracked client nonces exceeds
+	   ClientCacheSize+ClientCacheTolerance, ClientCacheTolerance*2
+	   older entries are purged.
 	*/
 	ClientCacheSize      int
 	ClientCacheTolerance int
@@ -108,7 +109,7 @@ func DigestAuthParams(r *http.Request) map[string]string {
 	return result
 }
 
-/* 
+/*
  Check if request contains valid authentication data. Returns a pair
  of username, authinfo where username is the name of the authenticated
  user or an empty string and authinfo is the contents for the optional
@@ -143,7 +144,7 @@ func (da *DigestAuth) CheckAuth(r *http.Request) (username string, authinfo *str
 	HA2 := H(r.Method + ":" + auth["uri"])
 	KD := H(strings.Join([]string{HA1, auth["nonce"], auth["nc"], auth["cnonce"], auth["qop"], HA2}, ":"))
 
-	if KD != auth["response"] {
+	if subtle.ConstantTimeCompare([]byte(KD), []byte(auth["response"])) != 1 {
 		return
 	}
 
@@ -178,7 +179,7 @@ func (da *DigestAuth) CheckAuth(r *http.Request) (username string, authinfo *str
 const DefaultClientCacheSize = 1000
 const DefaultClientCacheTolerance = 100
 
-/* 
+/*
  Wrap returns an Authenticator which uses HTTP Digest
  authentication. Arguments:
 
@@ -201,7 +202,7 @@ func (a *DigestAuth) Wrap(wrapped AuthenticatedHandlerFunc) http.HandlerFunc {
 	}
 }
 
-/* 
+/*
  JustCheck returns function which converts an http.HandlerFunc into a
  http.HandlerFunc which requires authentication. Username is passed as
  an extra X-Authenticated-Username header.
