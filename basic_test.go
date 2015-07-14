@@ -27,6 +27,7 @@ func TestAuthBasic(t *testing.T) {
 	data := [][]string{
 		{"test", "hello"},
 		{"test2", "hello2"},
+		{"test16", "topsecret"},
 	}
 	for _, tc := range data {
 		auth := base64.StdEncoding.EncodeToString([]byte(tc[0] + ":" + tc[1]))

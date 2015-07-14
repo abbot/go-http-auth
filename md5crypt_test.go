@@ -6,6 +6,7 @@ func Test_MD5Crypt(t *testing.T) {
 	test_cases := [][]string{
 		{"apache", "$apr1$J.w5a/..$IW9y6DR0oO/ADuhlMF5/X1"},
 		{"pass", "$1$YeNsbWdH$wvOF8JdqsoiLix754LTW90"},
+		{"topsecret", "$apr1$JI4wh3am$AmhephVqLTUyAVpFQeHZC0"},
 	}
 	for _, tc := range test_cases {
 		e := NewMD5Entry(tc[1])
