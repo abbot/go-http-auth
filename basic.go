@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/net/context"
 )
 
 type compareFunc func(hashedPassword, password []byte) error
@@ -31,6 +32,9 @@ type BasicAuth struct {
 	Realm   string
 	Secrets SecretProvider
 }
+
+// check that BasicAuth implements AuthenticatorInterface
+var _ = (AuthenticatorInterface)((*BasicAuth)(nil))
 
 /*
  Checks the username/password combination from the request. Returns
@@ -119,6 +123,16 @@ func (a *BasicAuth) Wrap(wrapped AuthenticatedHandlerFunc) http.HandlerFunc {
 			wrapped(w, ar)
 		}
 	}
+}
+
+// NewContext returns a context carrying authentication information for the request.
+func (a *BasicAuth) NewContext(ctx context.Context, r *http.Request) context.Context {
+	info := &Info{Username: a.CheckAuth(r), ResponseHeaders: make(http.Header)}
+	info.Authenticated = (info.Username != "")
+	if !info.Authenticated {
+		info.ResponseHeaders.Set("WWW-Authenticate", `Basic realm="`+a.Realm+`"`)
+	}
+	return context.WithValue(ctx, infoKey, info)
 }
 
 func NewBasicAuthenticator(realm string, secrets SecretProvider) *BasicAuth {

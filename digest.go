@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/net/context"
 )
 
 type digest_client struct {
@@ -35,6 +37,9 @@ type DigestAuth struct {
 	clients map[string]*digest_client
 	mutex   sync.Mutex
 }
+
+// check that DigestAuth implements AuthenticatorInterface
+var _ = (AuthenticatorInterface)((*DigestAuth)(nil))
 
 type digest_cache_entry struct {
 	nonce     string
@@ -212,6 +217,27 @@ func (a *DigestAuth) JustCheck(wrapped http.HandlerFunc) http.HandlerFunc {
 		ar.Header.Set("X-Authenticated-Username", ar.Username)
 		wrapped(w, &ar.Request)
 	})
+}
+
+// NewContext returns a context carrying authentication information for the request.
+func (a *DigestAuth) NewContext(ctx context.Context, r *http.Request) context.Context {
+	username, authinfo := a.CheckAuth(r)
+	info := &Info{Username: username, ResponseHeaders: make(http.Header)}
+	if username != "" {
+		info.Authenticated = true
+		info.ResponseHeaders.Set("Authentication-Info", *authinfo)
+	} else {
+		// return back digest WWW-Authenticate header
+		if len(a.clients) > a.ClientCacheSize+a.ClientCacheTolerance {
+			a.Purge(a.ClientCacheTolerance * 2)
+		}
+		nonce := RandomKey()
+		a.clients[nonce] = &digest_client{nc: 0, last_seen: time.Now().UnixNano()}
+		info.ResponseHeaders.Set("WWW-Authenticate",
+			fmt.Sprintf(`Digest realm="%s", nonce="%s", opaque="%s", algorithm="MD5", qop="auth"`,
+				a.Realm, nonce, a.Opaque))
+	}
+	return context.WithValue(ctx, infoKey, info)
 }
 
 func NewDigestAuthenticator(realm string, secrets SecretProvider) *DigestAuth {
