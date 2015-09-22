@@ -27,6 +27,7 @@ func TestAuthBasic(t *testing.T) {
 	data := [][]string{
 		{"test", "hello"},
 		{"test2", "hello2"},
+		{"test3", "hello3"},
 		{"test16", "topsecret"},
 	}
 	for _, tc := range data {

@@ -1,11 +1,30 @@
 package auth
 
 import (
+	"bytes"
 	"crypto/sha1"
 	"crypto/subtle"
 	"encoding/base64"
+	"errors"
 	"net/http"
 	"strings"
+
+	"golang.org/x/crypto/bcrypt"
+)
+
+type compareFunc func(hashedPassword, password []byte) error
+
+var (
+	errMismatchedHashAndPassword = errors.New("mismatched hash and password")
+
+	compareFuncs = []struct {
+		prefix  string
+		compare compareFunc
+	}{
+		{"", compareMD5HashAndPassword}, // default compareFunc
+		{"{SHA}", compareShaHashAndPassword},
+		{"$2y$", bcrypt.CompareHashAndPassword},
+	}
 )
 
 type BasicAuth struct {
@@ -34,26 +53,44 @@ func (a *BasicAuth) CheckAuth(r *http.Request) string {
 	if len(pair) != 2 {
 		return ""
 	}
-	passwd := a.Secrets(pair[0], a.Realm)
-	if passwd == "" {
+	user, password := pair[0], pair[1]
+	secret := a.Secrets(user, a.Realm)
+	if secret == "" {
 		return ""
 	}
-	if strings.HasPrefix(passwd, "{SHA}") {
-		d := sha1.New()
-		d.Write([]byte(pair[1]))
-		if subtle.ConstantTimeCompare([]byte(passwd[5:]), []byte(base64.StdEncoding.EncodeToString(d.Sum(nil)))) != 1 {
-			return ""
-		}
-	} else {
-		e := NewMD5Entry(passwd)
-		if e == nil {
-			return ""
-		}
-		if subtle.ConstantTimeCompare([]byte(passwd), MD5Crypt([]byte(pair[1]), e.Salt, e.Magic)) != 1 {
-			return ""
+	compare := compareFuncs[0].compare
+	for _, cmp := range compareFuncs[1:] {
+		if strings.HasPrefix(secret, cmp.prefix) {
+			compare = cmp.compare
+			break
 		}
 	}
+	if compare([]byte(secret), []byte(password)) != nil {
+		return ""
+	}
 	return pair[0]
+}
+
+func compareShaHashAndPassword(hashedPassword, password []byte) error {
+	d := sha1.New()
+	d.Write(password)
+	if subtle.ConstantTimeCompare(hashedPassword[5:], []byte(base64.StdEncoding.EncodeToString(d.Sum(nil)))) != 1 {
+		return errMismatchedHashAndPassword
+	}
+	return nil
+}
+
+func compareMD5HashAndPassword(hashedPassword, password []byte) error {
+	parts := bytes.SplitN(hashedPassword, []byte("$"), 4)
+	if len(parts) != 4 {
+		return errMismatchedHashAndPassword
+	}
+	magic := []byte("$" + string(parts[1]) + "$")
+	salt := parts[2]
+	if subtle.ConstantTimeCompare(hashedPassword, MD5Crypt(password, salt, magic)) != 1 {
+		return errMismatchedHashAndPassword
+	}
+	return nil
 }
 
 /*

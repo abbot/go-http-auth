@@ -26,7 +26,7 @@ func TestHtpasswdFile(t *testing.T) {
 	if passwd != "{SHA}qvTGHdzF6KLavt4PO0gs2a6pQ00=" {
 		t.Fatal("Incorrect passwd for test user:", passwd)
 	}
-	passwd = secrets("test3", "blah")
+	passwd = secrets("nosuchuser", "blah")
 	if passwd != "" {
 		t.Fatal("Got passwd for non-existant user:", passwd)
 	}

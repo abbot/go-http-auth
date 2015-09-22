@@ -1,13 +1,14 @@
+// Package auth is an implementation of HTTP Basic and HTTP Digest authentication.
 package auth
 
 import "net/http"
 
-/* 
+/*
  Request handlers must take AuthenticatedRequest instead of http.Request
 */
 type AuthenticatedRequest struct {
 	http.Request
-	/* 
+	/*
 	 Authenticated user name. Current API implies that Username is
 	 never empty, which means that authentication is always done
 	 before calling the request handler.
