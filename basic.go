@@ -29,6 +29,7 @@ var (
 )
 
 type BasicAuth struct {
+	IsProxy bool
 	Realm   string
 	Secrets SecretProvider
 }
@@ -44,7 +45,7 @@ var _ = (AuthenticatorInterface)((*BasicAuth)(nil))
  Supports MD5 and SHA1 password entries
 */
 func (a *BasicAuth) CheckAuth(r *http.Request) string {
-	s := strings.SplitN(r.Header.Get("Authorization"), " ", 2)
+	s := strings.SplitN(r.Header.Get(AuthorizationHeaderName(a.IsProxy)), " ", 2)
 	if len(s) != 2 || s[0] != "Basic" {
 		return ""
 	}
@@ -102,9 +103,8 @@ func compareMD5HashAndPassword(hashedPassword, password []byte) error {
  (or requires reauthentication).
 */
 func (a *BasicAuth) RequireAuth(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("WWW-Authenticate", `Basic realm="`+a.Realm+`"`)
-	w.WriteHeader(401)
-	w.Write([]byte("401 Unauthorized\n"))
+	w.Header().Set(AuthenticateHeaderName(a.IsProxy), `Basic realm="`+a.Realm+`"`)
+	http.Error(w, UnauthorizedStatusText(a.IsProxy), UnauthorizedStatusCode(a.IsProxy))
 }
 
 /*
@@ -130,11 +130,15 @@ func (a *BasicAuth) NewContext(ctx context.Context, r *http.Request) context.Con
 	info := &Info{Username: a.CheckAuth(r), ResponseHeaders: make(http.Header)}
 	info.Authenticated = (info.Username != "")
 	if !info.Authenticated {
-		info.ResponseHeaders.Set("WWW-Authenticate", `Basic realm="`+a.Realm+`"`)
+		info.ResponseHeaders.Set(AuthenticateHeaderName(a.IsProxy), `Basic realm="`+a.Realm+`"`)
 	}
 	return context.WithValue(ctx, infoKey, info)
 }
 
 func NewBasicAuthenticator(realm string, secrets SecretProvider) *BasicAuth {
 	return &BasicAuth{Realm: realm, Secrets: secrets}
+}
+
+func NewBasicAuthenticatorForProxy(realm string, secrets SecretProvider) *BasicAuth {
+	return &BasicAuth{IsProxy: true, Realm: realm, Secrets: secrets}
 }
