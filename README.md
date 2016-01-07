@@ -9,6 +9,7 @@ Features
 --------
  
  * Supports HTTP Basic and HTTP Digest authentication.
+ * Supports proxy authentication
  * Supports htpasswd and htdigest formatted files.
  * Automatic reloading of password files.
  * Pluggable interface for user/password storage.

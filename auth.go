@@ -102,3 +102,35 @@ func JustCheck(auth AuthenticatorInterface, wrapped http.HandlerFunc) http.Handl
 		wrapped(w, &ar.Request)
 	})
 }
+
+func AuthenticateHeaderName(proxy bool) string {
+	if proxy {
+		return "Proxy-Authenticate"
+	}
+	return "WWW-Authenticate"
+}
+
+func AuthorizationHeaderName(proxy bool) string {
+	if proxy {
+		return "Proxy-Authorization"
+	}
+	return "Authorization"
+}
+
+func AuthenticationInfoHeaderName(proxy bool) string {
+	if proxy {
+		return "Proxy-Authentication-Info"
+	}
+	return "Authentication-Info"
+}
+
+func UnauthorizedStatusCode(proxy bool) int {
+	if proxy {
+		return http.StatusProxyAuthRequired
+	}
+	return http.StatusUnauthorized
+}
+
+func UnauthorizedStatusText(proxy bool) string {
+	return http.StatusText(UnauthorizedStatusCode(proxy))
+}
