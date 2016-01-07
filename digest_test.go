@@ -1,8 +1,10 @@
 package auth
 
 import (
+	"bufio"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 )
@@ -54,4 +56,24 @@ func TestAuthDigest(t *testing.T) {
 	if u, _ := da.CheckAuth(r); u != "test" {
 		t.Fatal("empty auth for valid request in subpath")
 	}
+}
+
+func TestDigestAuthParams(t *testing.T) {
+	body := `GET http://fonts.googleapis.com/css?family=Source+Sans+Pro:400,700,400italic,700italic|Source+Code+Pro HTTP/1.1
+Host: fonts.googleapis.com
+User-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:43.0) Gecko/20100101 Firefox/43.0
+Accept: text/css,/;q=0.1
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate
+Referer: http://elm-lang.org/assets/style.css
+Authorization: Digest username="test", realm="", nonce="FRPnGdb8lvM1UHhi", uri="/css?family=Source+Sans+Pro:400,700,400italic,700italic|Source+Code+Pro", algorithm=MD5, response="fdcdd78e5b306ffed343d0ec3967f2e5", opaque="lEgVjogmIar2fg/t", qop=auth, nc=00000001, cnonce="e76b05db27a3b323"
+Connection: keep-alive
+
+`
+	req, _ := http.ReadRequest(bufio.NewReader(strings.NewReader(body)))
+	params := DigestAuthParams(req)
+	if params["uri"] != "/css?family=Source+Sans+Pro:400,700,400italic,700italic|Source+Code+Pro" {
+		t.Fatal("failed to parse uri with embedded commas")
+	}
+
 }

@@ -103,15 +103,7 @@ func DigestAuthParams(r *http.Request) map[string]string {
 		return nil
 	}
 
-	result := map[string]string{}
-	for _, kv := range strings.Split(s[1], ",") {
-		parts := strings.SplitN(kv, "=", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		result[strings.Trim(parts[0], "\" ")] = strings.Trim(parts[1], "\" ")
-	}
-	return result
+	return ParsePairs(s[1])
 }
 
 /*
