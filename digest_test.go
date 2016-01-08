@@ -70,10 +70,14 @@ Authorization: Digest username="test", realm="", nonce="FRPnGdb8lvM1UHhi", uri="
 Connection: keep-alive
 
 `
-	req, _ := http.ReadRequest(bufio.NewReader(strings.NewReader(body)))
+	req, err := http.ReadRequest(bufio.NewReader(strings.NewReader(body)))
+	if err != nil {
+		t.Fatalf("failed to read request: %v", err)
+	}
 	params := DigestAuthParams(req)
-	if params["uri"] != "/css?family=Source+Sans+Pro:400,700,400italic,700italic|Source+Code+Pro" {
-		t.Fatal("failed to parse uri with embedded commas")
+	want := "/css?family=Source+Sans+Pro:400,700,400italic,700italic|Source+Code+Pro"
+	if params["uri"] != want {
+		t.Fatalf("failed to parse uri with embedded commas, got %q want %q", params["uri"], want)
 	}
 
 }
