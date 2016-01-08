@@ -14,8 +14,17 @@ import (
 	"golang.org/x/net/context"
 )
 
+const DefaultNcCacheSize = 65536
+
 type digest_client struct {
-	nc        uint64
+	/*
+	   ncs_seen is a bitset used to record the nc values we've seen for a given nonce.
+	   This allows us to identify and deny replay attacks without relying on nc values
+	   always increasing. That's important since in practice a client's use of multiple
+	   server connections, a hierarchy of proxies, and AJAX can cause nc values to arrive
+	   out of order (See https://github.com/abbot/go-http-auth/issues/21)
+	*/
+	ncs_seen  *BitSet
 	last_seen int64
 }
 
@@ -25,7 +34,7 @@ type DigestAuth struct {
 	Opaque           string
 	Secrets          SecretProvider
 	PlainTextSecrets bool
-	IgnoreNonceCount bool
+	NcCacheSize      uint64 // The max number of nc values we remember before issuing a new nonce
 
 	/*
 	   Approximate size of Client's Cache. When actual number of
@@ -81,7 +90,7 @@ func (a *DigestAuth) Purge(count int) {
  http.Handler for DigestAuth which initiates the authentication process
  (or requires reauthentication).
 */
-func (a *DigestAuth) RequireAuth(w http.ResponseWriter, r *http.Request) {
+func (a *DigestAuth) RequireAuth(w http.ResponseWriter, r *http.Request, stale bool) {
 	a.mutex.Lock()
 	defer a.mutex.Unlock()
 
@@ -89,10 +98,13 @@ func (a *DigestAuth) RequireAuth(w http.ResponseWriter, r *http.Request) {
 		a.Purge(a.ClientCacheTolerance * 2)
 	}
 	nonce := RandomKey()
-	a.clients[nonce] = &digest_client{nc: 0, last_seen: time.Now().UnixNano()}
-	w.Header().Set(AuthenticateHeaderName(a.IsProxy),
-		fmt.Sprintf(`Digest realm="%s", nonce="%s", opaque="%s", algorithm="MD5", qop="auth"`,
-			a.Realm, nonce, a.Opaque))
+	a.clients[nonce] = &digest_client{ncs_seen: NewBitSet(a.NcCacheSize),
+		last_seen: time.Now().UnixNano()}
+	value := fmt.Sprintf(`Digest realm="%s", nonce="%s", opaque="%s", algorithm="MD5", qop="auth"`, a.Realm, nonce, a.Opaque)
+	if stale {
+		value += ", stale=true"
+	}
+	w.Header().Set(AuthenticateHeaderName(a.IsProxy), value)
 	http.Error(w, UnauthorizedStatusText(a.IsProxy), UnauthorizedStatusCode(a.IsProxy))
 }
 
@@ -111,16 +123,18 @@ func (a *DigestAuth) DigestAuthParams(r *http.Request) map[string]string {
 }
 
 /*
- Check if request contains valid authentication data. Returns a pair
- of username, authinfo where username is the name of the authenticated
- user or an empty string and authinfo is the contents for the optional
- Authentication-Info response header.
+ Check if request contains valid authentication data. Returns a triplet
+ of username, authinfo, stale where username is the name of the authenticated
+ user or an empty string, authinfo is the contents for the optional Authentication-Info
+ response header, and stale indicates whether the server-returned Authenticate header
+ should specify stale=true (see https://www.ietf.org/rfc/rfc2617.txt Section 3.3)
 */
-func (da *DigestAuth) CheckAuth(r *http.Request) (username string, authinfo *string) {
+func (da *DigestAuth) CheckAuth(r *http.Request) (username string, authinfo *string, stale bool) {
 	da.mutex.Lock()
 	defer da.mutex.Unlock()
 	username = ""
 	authinfo = nil
+	stale = false
 	auth := da.DigestAuthParams(r)
 	if auth == nil || da.Opaque != auth["opaque"] || auth["algorithm"] != "MD5" || auth["qop"] != "auth" {
 		return
@@ -182,21 +196,30 @@ func (da *DigestAuth) CheckAuth(r *http.Request) (username string, authinfo *str
 		return
 	}
 
-	if client, ok := da.clients[auth["nonce"]]; !ok {
+	client, ok := da.clients[auth["nonce"]]
+	if !ok {
+		stale = true
 		return
-	} else {
-		if client.nc != 0 && client.nc >= nc && !da.IgnoreNonceCount {
-			return
-		}
-		client.nc = nc
-		client.last_seen = time.Now().UnixNano()
 	}
+
+	// Check the nonce-count
+	if nc >= client.ncs_seen.Size() {
+		// nc exceeds the size of our bitset. We can just treat this the
+		// same as a stale nonce
+		stale = true
+		return
+	} else if client.ncs_seen.Get(nc) {
+		// We've already seen this nc! Possible replay attack!
+		return
+	}
+	client.ncs_seen.Set(nc)
+	client.last_seen = time.Now().UnixNano()
 
 	resp_HA2 := H(":" + auth["uri"])
 	rspauth := H(strings.Join([]string{HA1, auth["nonce"], auth["nc"], auth["cnonce"], auth["qop"], resp_HA2}, ":"))
 
 	info := fmt.Sprintf(`qop="auth", rspauth="%s", cnonce="%s", nc="%s"`, rspauth, auth["cnonce"], auth["nc"])
-	return auth["username"], &info
+	return auth["username"], &info, stale
 }
 
 /*
@@ -216,8 +239,8 @@ const DefaultClientCacheTolerance = 100
 */
 func (a *DigestAuth) Wrap(wrapped AuthenticatedHandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if username, authinfo := a.CheckAuth(r); username == "" {
-			a.RequireAuth(w, r)
+		if username, authinfo, stale := a.CheckAuth(r); username == "" {
+			a.RequireAuth(w, r, stale)
 		} else {
 			ar := &AuthenticatedRequest{Request: *r, Username: username}
 			if authinfo != nil {
@@ -242,7 +265,7 @@ func (a *DigestAuth) JustCheck(wrapped http.HandlerFunc) http.HandlerFunc {
 
 // NewContext returns a context carrying authentication information for the request.
 func (a *DigestAuth) NewContext(ctx context.Context, r *http.Request) context.Context {
-	username, authinfo := a.CheckAuth(r)
+	username, authinfo, stale := a.CheckAuth(r)
 	info := &Info{Username: username, ResponseHeaders: make(http.Header)}
 	if username != "" {
 		info.Authenticated = true
@@ -253,10 +276,14 @@ func (a *DigestAuth) NewContext(ctx context.Context, r *http.Request) context.Co
 			a.Purge(a.ClientCacheTolerance * 2)
 		}
 		nonce := RandomKey()
-		a.clients[nonce] = &digest_client{nc: 0, last_seen: time.Now().UnixNano()}
-		info.ResponseHeaders.Set(AuthenticateHeaderName(a.IsProxy),
-			fmt.Sprintf(`Digest realm="%s", nonce="%s", opaque="%s", algorithm="MD5", qop="auth"`,
-				a.Realm, nonce, a.Opaque))
+		a.clients[nonce] = &digest_client{ncs_seen: NewBitSet(a.NcCacheSize),
+			last_seen: time.Now().UnixNano()}
+		value := fmt.Sprintf(`Digest realm="%s", nonce="%s", opaque="%s", algorithm="MD5", qop="auth"`,
+			a.Realm, nonce, a.Opaque)
+		if stale {
+			value += ", stale=true"
+		}
+		info.ResponseHeaders.Set(AuthenticateHeaderName(a.IsProxy), value)
 	}
 	return context.WithValue(ctx, infoKey, info)
 }
@@ -267,6 +294,7 @@ func NewDigestAuthenticator(realm string, secrets SecretProvider) *DigestAuth {
 		Realm:                realm,
 		Secrets:              secrets,
 		PlainTextSecrets:     false,
+		NcCacheSize:          DefaultNcCacheSize,
 		ClientCacheSize:      DefaultClientCacheSize,
 		ClientCacheTolerance: DefaultClientCacheTolerance,
 		clients:              map[string]*digest_client{}}
