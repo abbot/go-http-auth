@@ -20,11 +20,11 @@ type digest_client struct {
 }
 
 type DigestAuth struct {
-	Realm                  string
-	Opaque                 string
-	Secrets                SecretProvider
-	PlainTextSecrets       bool
-	DisableNonceCountCheck bool
+	Realm            string
+	Opaque           string
+	Secrets          SecretProvider
+	PlainTextSecrets bool
+	IgnoreNonceCount bool
 
 	/*
 	   Approximate size of Client's Cache. When actual number of
@@ -165,7 +165,7 @@ func (da *DigestAuth) CheckAuth(r *http.Request) (username string, authinfo *str
 	if client, ok := da.clients[auth["nonce"]]; !ok {
 		return
 	} else {
-		if client.nc != 0 && client.nc >= nc && !da.DisableNonceCountCheck {
+		if client.nc != 0 && client.nc >= nc && !da.IgnoreNonceCount {
 			return
 		}
 		client.nc = nc

@@ -40,11 +40,11 @@ func TestAuthDigest(t *testing.T) {
 	}
 
 	// try again with nc checking off
-	da.DisableNonceCountCheck = true
+	da.IgnoreNonceCount = true
 	if u, _ := da.CheckAuth(r); u != "test" {
 		t.Fatal("empty auth for outdated nc even though nc checking is off")
 	}
-	da.DisableNonceCountCheck = false
+	da.IgnoreNonceCount = false
 
 	r.URL, _ = url.Parse("/")
 	da.clients["Vb9BP/h81n3GpTTB"] = &digest_client{nc: 0, last_seen: time.Now().UnixNano()}
