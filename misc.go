@@ -9,9 +9,7 @@ import (
 	"strings"
 )
 
-/*
- Return a random 16-byte base64 alphabet string
-*/
+// RandomKey returns a random 16-byte base64 alphabet string
 func RandomKey() string {
 	k := make([]byte, 12)
 	for bytes := 0; bytes < len(k); {
@@ -24,49 +22,46 @@ func RandomKey() string {
 	return base64.StdEncoding.EncodeToString(k)
 }
 
-/*
- H function for MD5 algorithm (returns a lower-case hex MD5 digest)
-*/
+// H function for MD5 algorithm (returns a lower-case hex MD5 digest)
 func H(data string) string {
 	digest := md5.New()
 	digest.Write([]byte(data))
 	return fmt.Sprintf("%x", digest.Sum(nil))
 }
 
-/*
- ParseList parses a comma-separated list of values as described by RFC 2068.
- which was itself ported from urllib2.parse_http_list, from the Python standard library.
- Lifted from https://code.google.com/p/gorilla/source/browse/http/parser/parser.go
-*/
+// ParseList parses a comma-separated list of values as described by
+// RFC 2068 and returns list elements.
+//
+// Lifted from https://code.google.com/p/gorilla/source/browse/http/parser/parser.go
+// which was ported from urllib2.parse_http_list, from the Python
+// standard library.
 func ParseList(value string) []string {
 	var list []string
 	var escape, quote bool
 	b := new(bytes.Buffer)
 	for _, r := range value {
-		if escape {
+		switch {
+		case escape:
 			b.WriteRune(r)
 			escape = false
-			continue
-		}
-		if quote {
+		case quote:
 			if r == '\\' {
 				escape = true
-				continue
-			} else if r == '"' {
-				quote = false
+			} else {
+				if r == '"' {
+					quote = false
+				}
+				b.WriteRune(r)
 			}
-			b.WriteRune(r)
-			continue
-		}
-		if r == ',' {
+		case r == ',':
 			list = append(list, strings.TrimSpace(b.String()))
 			b.Reset()
-			continue
-		}
-		if r == '"' {
+		case r == '"':
 			quote = true
+			b.WriteRune(r)
+		default:
+			b.WriteRune(r)
 		}
-		b.WriteRune(r)
 	}
 	// Append last part.
 	if s := b.String(); s != "" {
@@ -75,13 +70,13 @@ func ParseList(value string) []string {
 	return list
 }
 
-/*
- ParsePairs extracts key/value pairs from a comma-separated list of values as
- described by RFC 2068.
- The resulting values are unquoted. If a value doesn't contain a "=", the
- key is the value itself and the value is an empty string.
- Lifted from https://code.google.com/p/gorilla/source/browse/http/parser/parser.go
-*/
+// ParsePairs extracts key/value pairs from a comma-separated list of
+// values as described by RFC 2068 and returns a map[key]value. The
+// resulting values are unquoted. If a list element doesn't contain a
+// "=", the key is the element itself and the value is an empty
+// string.
+//
+// Lifted from https://code.google.com/p/gorilla/source/browse/http/parser/parser.go
 func ParsePairs(value string) map[string]string {
 	m := make(map[string]string)
 	for _, pair := range ParseList(strings.TrimSpace(value)) {

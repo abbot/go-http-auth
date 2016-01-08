@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"fmt"
 	"reflect"
 	"testing"
 )
@@ -16,11 +15,11 @@ func TestH(t *testing.T) {
 }
 
 func TestParsePairs(t *testing.T) {
-	const header = `username="test", realm="", nonce="FRPnGdb8lvM1UHhi", uri="/css?family=Source+Sans+Pro:400,700,400italic,700italic|Source+Code+Pro", algorithm=MD5, response="fdcdd78e5b306ffed343d0ec3967f2e5", opaque="lEgVjogmIar2fg/t", qop=auth, nc=00000001, cnonce="e76b05db27a3b323"`
+	const header = `username="\test", realm="a \"quoted\" string", nonce="FRPnGdb8lvM1UHhi", uri="/css?family=Source+Sans+Pro:400,700,400italic,700italic|Source+Code+Pro", algorithm=MD5, response="fdcdd78e5b306ffed343d0ec3967f2e5", opaque="lEgVjogmIar2fg/t", qop=auth, nc=00000001, cnonce="e76b05db27a3b323"`
 
-	expected := map[string]string{
+	want := map[string]string{
 		"username":  "test",
-		"realm":     "",
+		"realm":     `a "quoted" string`,
 		"nonce":     "FRPnGdb8lvM1UHhi",
 		"uri":       "/css?family=Source+Sans+Pro:400,700,400italic,700italic|Source+Code+Pro",
 		"algorithm": "MD5",
@@ -30,12 +29,9 @@ func TestParsePairs(t *testing.T) {
 		"nc":        "00000001",
 		"cnonce":    "e76b05db27a3b323",
 	}
+	got := ParsePairs(header)
 
-	res := ParsePairs(header)
-
-	if !reflect.DeepEqual(res, expected) {
-		fmt.Printf("%#v\n", res)
-		t.Fatal("Failed to correctly parse pairs")
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("failed to correctly parse pairs, got %v, want %v\ndiff: %s", got, want)
 	}
-
 }
