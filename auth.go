@@ -96,9 +96,14 @@ func FromContext(ctx context.Context) *Info {
 	return info
 }
 
+// AuthUsernameHeader is the header set by JustCheck functions. It
+// contains an authenticated username (if authentication was
+// successful).
+const AuthUsernameHeader = "X-Authenticated-Username"
+
 func JustCheck(auth AuthenticatorInterface, wrapped http.HandlerFunc) http.HandlerFunc {
 	return auth.Wrap(func(w http.ResponseWriter, ar *AuthenticatedRequest) {
-		ar.Header.Set("X-Authenticated-Username", ar.Username)
+		ar.Header.Set(AuthUsernameHeader, ar.Username)
 		wrapped(w, &ar.Request)
 	})
 }
