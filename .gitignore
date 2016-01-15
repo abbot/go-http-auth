@@ -3,3 +3,5 @@
 *.6
 *.out
 _testmain.go
+.vscode
+

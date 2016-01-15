@@ -2,6 +2,7 @@ package auth
 
 import (
 	"bufio"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -21,78 +22,78 @@ func TestAuthDigest(t *testing.T) {
 			clients:     map[string]*digest_client{}}
 		r := &http.Request{}
 		r.Method = "GET"
-		if u, _, _ := da.CheckAuth(r); u != "" {
-			t.Fatal("non-empty auth for empty request header")
+		if _, err := da.CheckAuth(r); err == nil {
+			t.Fatal("successful auth for missing request header")
 		}
 		r.Header = http.Header(make(map[string][]string))
 		r.Header.Set(AuthorizationHeaderName(da.IsProxy), "Digest blabla")
-		if u, _, _ := da.CheckAuth(r); u != "" {
-			t.Fatal("non-empty auth for bad request header")
+		if _, err := da.CheckAuth(r); err == nil {
+			t.Fatal("successful auth for bad request header")
 		}
 
 		r.URL, _ = url.Parse("/t2")
 		r.Header.Set(AuthorizationHeaderName(da.IsProxy), `Digest username="test", realm="example.com", nonce="Vb9BP/h81n3GpTTB", uri="/t2", cnonce="NjE4MTM2", nc=00000001, qop="auth", response="ffc357c4eba74773c8687e0bc724c9a3", opaque="U7H+ier3Ae8Skd/g", algorithm="MD5"`)
-		u, _, stale := da.CheckAuth(r)
-		if u != "" {
-			t.Fatal("non-empty auth for unknown client")
+		result, err := da.CheckAuth(r)
+		if err == nil {
+			t.Fatal("successful auth for unknown client")
 		}
-		if !stale {
+		if err != ErrDigestStaleNonce {
+			fmt.Println("err: ", err)
 			t.Fatal("stale should be true")
 		}
 
 		da.clients["Vb9BP/h81n3GpTTB"] = &digest_client{ncs_seen: NewBitSet(da.NcCacheSize),
 			last_seen: time.Now().UnixNano()}
-		u, _, stale = da.CheckAuth(r)
-		if u != "test" {
-			t.Fatal("empty auth for legitimate client")
-		}
-		if stale {
-			t.Fatal("stale should be false")
+		result, err = da.CheckAuth(r)
+		if result.Username != "test" {
+			t.Fatal("failed auth for legitimate client")
 		}
 
-		r.URL, _ = url.Parse("/")
+		r.URL.Path = "/"
 		da.clients["Vb9BP/h81n3GpTTB"] = &digest_client{ncs_seen: NewBitSet(da.NcCacheSize), last_seen: time.Now().UnixNano()}
-		if u, _, _ := da.CheckAuth(r); u != "" {
-			t.Fatal("non-empty auth for bad request path")
+		if _, err := da.CheckAuth(r); err == nil {
+			t.Fatal("successful auth for bad request path")
 		}
 
-		r.URL, _ = url.Parse("/t3")
+		r.URL.Path = "/t3"
 		da.clients["Vb9BP/h81n3GpTTB"] = &digest_client{ncs_seen: NewBitSet(da.NcCacheSize), last_seen: time.Now().UnixNano()}
-		if u, _, _ := da.CheckAuth(r); u != "" {
-			t.Fatal("non-empty auth for bad request path")
+		if _, err := da.CheckAuth(r); err == nil {
+			t.Fatal("successful auth for bad request path")
 		}
 
+		// we don't support subpaths anymore, it's not clear that was ever correct...
 		da.clients["+RbVXSbIoa1SaJk1"] = &digest_client{ncs_seen: NewBitSet(da.NcCacheSize), last_seen: time.Now().UnixNano()}
 		r.Header.Set(AuthorizationHeaderName(da.IsProxy), `Digest username="test", realm="example.com", nonce="+RbVXSbIoa1SaJk1", uri="/", cnonce="NjE4NDkw", nc=00000001, qop="auth", response="c08918024d7faaabd5424654c4e3ad1c", opaque="U7H+ier3Ae8Skd/g", algorithm="MD5"`)
-		if u, _, _ := da.CheckAuth(r); u != "test" {
-			t.Fatal("empty auth for valid request in subpath")
+		if _, err := da.CheckAuth(r); err == nil {
+			t.Fatal("successful auth for pad request path")
 		}
 
 		// nc checking, we've already seen 00000001 so this should fail
-		if u, _, _ := da.CheckAuth(r); u != "" {
-			t.Fatal("non-empty auth for already-seen nc")
+		if _, err := da.CheckAuth(r); err == nil {
+			t.Fatal("successful auth for already-seen nc")
 		}
 
+		r.URL.Path = "/"
 		// an updated request with nc 00000005 should succeed
 		r.Header.Set(AuthorizationHeaderName(da.IsProxy), `Digest username="test", realm="example.com", nonce="+RbVXSbIoa1SaJk1", uri="/", cnonce="NjE4NDkw", nc=00000005, qop="auth", response="c553c9a48ec99de9474e662934f73de2", opaque="U7H+ier3Ae8Skd/g", algorithm="MD5"`)
-		if u, _, _ := da.CheckAuth(r); u != "test" {
-			t.Fatal("empty auth for valid nc 00000005")
+		if _, err := da.CheckAuth(r); err != nil {
+			t.Fatal("failed auth for valid nc 00000005: ", err)
 		}
 
 		// but repeating it should fail...
 		r.Header.Set(AuthorizationHeaderName(da.IsProxy), `Digest username="test", realm="example.com", nonce="+RbVXSbIoa1SaJk1", uri="/", cnonce="NjE4NDkw", nc=00000005, qop="auth", response="c553c9a48ec99de9474e662934f73de2", opaque="U7H+ier3Ae8Skd/g", algorithm="MD5"`)
-		if u, _, _ := da.CheckAuth(r); u != "" {
-			t.Fatal("non-empty auth for repeated nc 00000005")
+		if _, err := da.CheckAuth(r); err == nil {
+			t.Fatal("successful auth for repeated nc 00000005")
 		}
 
 		// an updated request with nc 00000002 should succeed even though it's out of order, since it hasn't been seen yet
 		r.Header.Set(AuthorizationHeaderName(da.IsProxy), `Digest username="test", realm="example.com", nonce="+RbVXSbIoa1SaJk1", uri="/", cnonce="NjE4NDkw", nc=00000002, qop="auth", response="1c2a64978d9e8a61f823240304b95afd", opaque="U7H+ier3Ae8Skd/g", algorithm="MD5"`)
-		if u, _, _ := da.CheckAuth(r); u != "test" {
-			t.Fatal("empty auth for valid nc 00000002")
+		if _, err := da.CheckAuth(r); err != nil {
+			t.Fatal("failed auth for valid nc 00000002: ", err)
 		}
 
-		if da.clients["+RbVXSbIoa1SaJk1"].ncs_seen.String() != "01100100000000000000" {
-			t.Fatal("ncs_seen bitmap didn't match expected")
+		if da.clients["+RbVXSbIoa1SaJk1"].ncs_seen.String() != "00100100000000000000" {
+			t.Fatal("ncs_seen bitmap didn't match expected: ", da.clients["+RbVXSbIoa1SaJk1"].ncs_seen.String())
 		}
 
 	}

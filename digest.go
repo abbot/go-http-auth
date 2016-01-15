@@ -86,6 +86,9 @@ func (a *DigestAuth) Purge(count int) {
 	}
 }
 
+const DigestAlgorithm = "MD5"
+const DigestQop = "auth"
+
 /*
  http.Handler for DigestAuth which initiates the authentication process
  (or requires reauthentication).
@@ -100,7 +103,8 @@ func (a *DigestAuth) RequireAuth(w http.ResponseWriter, r *http.Request, stale b
 	nonce := RandomKey()
 	a.clients[nonce] = &digest_client{ncs_seen: NewBitSet(a.NcCacheSize),
 		last_seen: time.Now().UnixNano()}
-	value := fmt.Sprintf(`Digest realm="%s", nonce="%s", opaque="%s", algorithm="MD5", qop="auth"`, a.Realm, nonce, a.Opaque)
+	value := fmt.Sprintf(`Digest realm="%s", nonce="%s", opaque="%s", algorithm="%s", qop="%s"`, a.Realm, nonce,
+		a.Opaque, DigestAlgorithm, DigestQop)
 	if stale {
 		value += ", stale=true"
 	}
@@ -122,59 +126,149 @@ func (a *DigestAuth) DigestAuthParams(r *http.Request) map[string]string {
 	return ParsePairs(s[1])
 }
 
+type DigestAuthResult struct {
+	Username string
+	Authinfo string
+}
+
+var ErrDigestAuthMissing = fmt.Errorf("missing digest auth header")
+var ErrDigestOpaqueMismatch = fmt.Errorf("client opaque does not match server opaque")
+var ErrDigestAlgorithmMismatch = fmt.Errorf("algorithm mismatch; expected %s", DigestAlgorithm)
+var ErrDigestQopMismatch = fmt.Errorf("qop mismatch; expected %s", DigestQop)
+var ErrDigestResponseMismatch = fmt.Errorf("response mismatch")
+var ErrDigestRepeatedNc = fmt.Errorf("repeated nc! (replay attack?)")
+var ErrDigestStaleNonce = fmt.Errorf("stale nonce")
+
+type ErrDigestUriMismatch struct {
+	fromRequest string
+	fromAuth    string
+}
+
+func (e ErrDigestUriMismatch) Error() string {
+	return fmt.Sprintf("path mismatch: %s != %s", e.fromRequest, e.fromAuth)
+}
+
+type ErrDigestHostMismatch struct {
+	fromRequest string
+	fromAuth    string
+}
+
+func (e ErrDigestHostMismatch) Error() string {
+	return fmt.Sprintf("host mismatch: %s != %s", e.fromRequest, e.fromAuth)
+}
+
+type ErrDigestBadNc struct {
+	err error
+}
+
+func (e ErrDigestBadNc) Error() string {
+	return fmt.Sprintf("failed to parse nc: %s", e.err)
+}
+
+type ErrDigestBadUri struct {
+	uri string
+}
+
+func (e ErrDigestBadUri) Error() string {
+	return fmt.Sprintf("failed to parse uri: %s", e.uri)
+}
+
 /*
- Check if request contains valid authentication data. Returns a triplet
- of username, authinfo, stale where username is the name of the authenticated
- user or an empty string, authinfo is the contents for the optional Authentication-Info
- response header, and stale indicates whether the server-returned Authenticate header
- should specify stale=true (see https://www.ietf.org/rfc/rfc2617.txt Section 3.3)
+ CheckAuth checks whether the request contains valid authentication data. Returns
+ a tuple of DigestAuthResult, error. On success, err is nil and the result contains
+ the name of the authenticated user and authinfo for the contents of the optional
+ XYZ-Authentication-Info response header. If err==ErrDigestStaleNonce then the caller
+ should specify stale=true (see https://www.ietf.org/rfc/rfc2617.txt Section 3.3) when
+ sending the XYZ-Authenticate header.
 */
-func (da *DigestAuth) CheckAuth(r *http.Request) (username string, authinfo *string, stale bool) {
+func (da *DigestAuth) CheckAuth(r *http.Request) (*DigestAuthResult, error) {
 	da.mutex.Lock()
 	defer da.mutex.Unlock()
-	username = ""
-	authinfo = nil
-	stale = false
+	result := &DigestAuthResult{}
 	auth := da.DigestAuthParams(r)
-	if auth == nil || da.Opaque != auth["opaque"] || auth["algorithm"] != "MD5" || auth["qop"] != "auth" {
-		return
+	if auth == nil {
+		return nil, ErrDigestAuthMissing
+	} else if da.Opaque != auth["opaque"] {
+		return nil, ErrDigestOpaqueMismatch
+	} else if auth["algorithm"] != DigestAlgorithm {
+		return nil, ErrDigestAlgorithmMismatch
+	} else if auth["qop"] != DigestQop {
+		return nil, ErrDigestQopMismatch
 	}
 
-	/* Check whether the requested URI matches auth header
-	   NOTE: when we're a proxy and method is CONNECT, the request and auth uri
-	   specify a hostname not a path, e.g.
+	// Checking the proxy auth uri is surprisingly difficult...
+	//
+	// Typical examples: note that querystring is included in Proxy-Authorization uri so we
+	// must strip it off before comparing to our request path
+	//
+	// GET http://start.ubuntu.com/14.04/Google/?sourceid=hp HTTP/1.1
+	// User-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:43.0) Gecko/20100101 Firefox/43.0
+	// Host: start.ubuntu.com
+	// Proxy-Authorization: Digest username="test", realm="Proxy", nonce="FhnRLUZSHgPUhw5S", uri="/14.04/Google/?sourceid=hp",
+	// algorithm=MD5, response="c9f50ab9dd1b1a67c8ca03d1e1c4668a", opaque="6d33bebd35010c78c846cec1ed34373d", qop=auth, nc=00000001, cnonce="87e41ec0b553d1e3"
+	//
+	// For connect, there is no path so we compare hostname and port
+	//
+	// CONNECT 2.rto.microsoft.com:443 HTTP/1.1
+	// Host: 2.rto.microsoft.com:443
+	// User-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:43.0) Gecko/20100101 Firefox/43.0
+	// Proxy-Authorization: Digest username="test", realm="Proxy", nonce="69uac299Qm9CdrHd", uri="2.rto.microsoft.com:443",
+	// algorithm=MD5, response="30d5eb727a1aaea879599d813bcaef57", opaque="6d33bebd35010c78c846cec1ed34373d", qop=auth, nc=00000001, cnonce="3057a2b17430ba89"
+	//
+	// Except that sometimes the ports don't match, so we have to exclude them from the matching logic...
+	//
+	// CONNECT core25usw2.fabrik.nytimes.com.:80 HTTP/1.1
+	// User-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:43.0) Gecko/20100101 Firefox/43.0
+	// Host: core25usw2.fabrik.nytimes.com.:80
+	// Proxy-Authorization: Digest username="test", realm="Proxy", nonce="r+10+JoybdZlWpaW", uri="core25usw2.fabrik.nytimes.com.:443",
+	// algorithm=MD5, response="a827b29b872613509052ff8b68e3b365", opaque="6d33bebd35010c78c846cec1ed34373d", qop=auth, nc=00000001, cnonce="70876e4bbcdb1e4a"
+	//
+	// Or clients send malformed data (like the extra slashes here). It's not clear whether the client is sending malformed data, or whether they
+	// are trying to use protocol-relative addressing and the golang url parser just can't handle it.
+	// The request line path is parsed as "//www/delivery/retarget.php"" but the proxy auth uri path is parsed as "/delivery/retarget.php"
+	//
+	// GET http://ap.lijit.com//www/delivery/retarget.php?a=a&r=rtb_criteo&pid=9&3pid=1bbc9197-bea9-4fad-892a-f9ac383cbccd&cb=e1791e3c-eb07-4396-91e1-7bcfce7d3e17 HTTP/1.1
+	// Host: ap.lijit.com
+	// User-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:43.0) Gecko/20100101 Firefox/43.0^M
+	// Proxy-Authorization: Digest username="test", realm="Proxy", nonce="fRFG/XucPibCZ+wy", uri="//www/delivery/retarget.php?a=a&r=rtb_criteo&pid=9&3pid=1bbc9197-bea9-4fad-892a-f9ac383cbccd&cb=e1791e3c-eb07-4396-91e1-7bcfce7d3e17",
+	//        algorithm=MD5, response="58c7c6b5b8419f9a87d5e81e87ef2027", opaque="6d33bebd35010c78c846cec1ed34373d", qop=auth, nc=00000001, cnonce="620ce89123d29c75"^M
+	//
+	// Another example. The request line path is parsed as "//dynamic_preroll_playlist.fmil" and the proxy auth uri path is parsed as "" (seen on independent.co.uk)
+	//
+	// POST http://plg2.yumenetworks.com//dynamic_preroll_playlist.fmil?domain=2158REpjOITz&yvbsv=6.2.9.3&&protocol_version=2.0&sdk_ver=3.1.9.20&width=300&height=250&embeddedIn=http%3A%2F%2Fwww.independent.co.uk%2Fnews%2Fworld%2Famericas&
+	//    sdk_url=http%3A%2F%2Fplg1.yumenetworks.com%2Fyvp%2F20%2Fvpaid%2Fcr%2F&viewport=970,1219,0,0,300,250,970,1447&ytp=0,228,1301,673,970,1447,1301,6843&ypt=none& HTTP/1.1^M
+	// Host: plg2.yumenetworks.com^M
+	// Proxy-Authorization: Digest username="magnus", realm="Magthor Proxy", nonce="yV12jLlyzAb7Lo9R", uri="//dynamic_preroll_playlist.fmil?domain=2158REpjOITz&yvbsv=6.2.9.3&&protocol_version=2.0&sdk_ver=3.1.9.20&width=300&height=250&
+	//     embeddedIn=http%3A%2F%2Fwww.independent.co.uk%2Fnews%2Fworld%2Famericas&sdk_url=http%3A%2F%2Fplg1.yumenetworks.com%2Fyvp%2F20%2Fvpaid%2Fcr%2F&viewport=970,1219,0,0,300,250,970,1447&ytp=0,228,1301,673,970,1447,1301,6843&ypt=none&", algorithm=MD5,
+	//    response="0813fb545b1558bef224b4ecdedf0e2f", opaque="6d33bebd35010c78c846cec1ed34373d", qop=auth, nc=00000279, cnonce="e59ed7e19d323c8b"^M
+	//
 
-	   CONNECT 1-edge-chat.facebook.com:443 HTTP/1.1
-	   User-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:43.0) Gecko/20100101 Firefox/43.0
-	   Proxy-Connection: keep-alive
-	   Connection: keep-alive
-	   Host: 1-edge-chat.facebook.com:443
-	   Proxy-Authorization: Digest username="test", realm="",
-	         nonce="iQSz9RcA1Qsa6ono",
-	         uri="1-edge-chat.facebook.com:443",
-	         algorithm=MD5,
-	         response="a077a4676d60ff8bf48577ad7c7360d6",
-	         opaque="EN3BwDsuWB5F6IWR", qop=auth, nc=0000000c,
-	         cnonce="548d04d1bbd63926"
-	*/
+	// We have to parse auth["uri"] instead of comparing directly since it could contain url-escaped chars
+	authPath, err := url.Parse(auth["uri"])
+	if err != nil {
+		return nil, &ErrDigestBadUri{auth["uri"]}
+	}
 
-	if r.Method == "CONNECT" {
-		if r.RequestURI != auth["uri"] {
-			return
+	if r.URL.Path == "" {
+		// e.g. CONNECT
+		// compare without port numbers, if any
+		if strings.Split(r.RequestURI, ":")[0] != strings.Split(auth["uri"], ":")[0] {
+			return nil, &ErrDigestHostMismatch{r.RequestURI, auth["uri"]}
 		}
 	} else {
-
-		// Check if the requested URI matches auth header
-		switch u, err := url.Parse(auth["uri"]); {
-		case err != nil:
-			return
-		case r.URL == nil:
-			return
-		case len(u.Path) > len(r.URL.Path):
-			return
-		case !strings.HasPrefix(r.URL.Path, u.Path):
-			return
+		// e.g. GET
+		if authPath.Path == "" {
+			// e.g. path like "//dynamic_preroll_playlist.fmil?..." which isn't parsed correctly
+			compare := strings.Split(auth["uri"], "?")[0]
+			if r.URL.Path != compare {
+				return nil, &ErrDigestUriMismatch{r.URL.Path, compare + " (?)"}
+			}
+		} else if r.URL.Path != authPath.Path {
+			return nil, &ErrDigestUriMismatch{r.URL.Path, authPath.Path}
 		}
+		//if !strings.HasPrefix(authPath.Path, r.URL.Path) {
+		//	return nil, &ErrDigestUriMismatch{r.URL.Path, authPath.Path}
+		//}
 	}
 
 	HA1 := da.Secrets(auth["username"], da.Realm)
@@ -182,44 +276,48 @@ func (da *DigestAuth) CheckAuth(r *http.Request) (username string, authinfo *str
 		HA1 = H(auth["username"] + ":" + da.Realm + ":" + HA1)
 	}
 	HA2 := H(r.Method + ":" + auth["uri"])
+
+	// NOTE: it could be that the client nonce doesn't match ours (we check that later), but this calc
+	// verifies they provided the correct user password
 	KD := H(strings.Join([]string{HA1, auth["nonce"], auth["nc"], auth["cnonce"], auth["qop"], HA2}, ":"))
 
 	if subtle.ConstantTimeCompare([]byte(KD), []byte(auth["response"])) != 1 {
-		return
+		return nil, ErrDigestResponseMismatch
 	}
 
 	// At this point crypto checks are completed and validated.
 	// Now check if the session is valid.
-
 	nc, err := strconv.ParseUint(auth["nc"], 16, 64)
 	if err != nil {
-		return
+		return nil, &ErrDigestBadNc{err}
 	}
 
 	client, ok := da.clients[auth["nonce"]]
 	if !ok {
-		stale = true
-		return
+		return nil, ErrDigestStaleNonce
 	}
 
 	// Check the nonce-count
 	if nc >= client.ncs_seen.Size() {
 		// nc exceeds the size of our bitset. We can just treat this the
 		// same as a stale nonce
-		stale = true
-		return
+		return nil, ErrDigestStaleNonce
 	} else if client.ncs_seen.Get(nc) {
 		// We've already seen this nc! Possible replay attack!
-		return
+		return nil, ErrDigestRepeatedNc
 	}
+
+	// NOTE: we don't register that we've seen this nc until this point; not sure if that is correct. It may
+	// be preferable to parse nonce and nc as one of the first operations so that we get nc stored in our bitmap
+	// regardless of whether or not the request successfully passes authorization
 	client.ncs_seen.Set(nc)
 	client.last_seen = time.Now().UnixNano()
 
 	resp_HA2 := H(":" + auth["uri"])
 	rspauth := H(strings.Join([]string{HA1, auth["nonce"], auth["nc"], auth["cnonce"], auth["qop"], resp_HA2}, ":"))
-
-	info := fmt.Sprintf(`qop="auth", rspauth="%s", cnonce="%s", nc="%s"`, rspauth, auth["cnonce"], auth["nc"])
-	return auth["username"], &info, stale
+	result.Authinfo = fmt.Sprintf(`qop="%s", rspauth="%s", cnonce="%s", nc="%s"`, DigestQop, rspauth, auth["cnonce"], auth["nc"])
+	result.Username = auth["username"]
+	return result, nil
 }
 
 /*
@@ -239,13 +337,11 @@ const DefaultClientCacheTolerance = 100
 */
 func (a *DigestAuth) Wrap(wrapped AuthenticatedHandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if username, authinfo, stale := a.CheckAuth(r); username == "" {
-			a.RequireAuth(w, r, stale)
+		if result, err := a.CheckAuth(r); err != nil {
+			a.RequireAuth(w, r, err == ErrDigestStaleNonce)
 		} else {
-			ar := &AuthenticatedRequest{Request: *r, Username: username}
-			if authinfo != nil {
-				w.Header().Set(AuthenticationInfoHeaderName(a.IsProxy), *authinfo)
-			}
+			ar := &AuthenticatedRequest{Request: *r, Username: result.Username}
+			w.Header().Set(AuthenticationInfoHeaderName(a.IsProxy), result.Authinfo)
 			wrapped(w, ar)
 		}
 	}
@@ -265,11 +361,11 @@ func (a *DigestAuth) JustCheck(wrapped http.HandlerFunc) http.HandlerFunc {
 
 // NewContext returns a context carrying authentication information for the request.
 func (a *DigestAuth) NewContext(ctx context.Context, r *http.Request) context.Context {
-	username, authinfo, stale := a.CheckAuth(r)
-	info := &Info{Username: username, ResponseHeaders: make(http.Header)}
-	if username != "" {
+	result, err := a.CheckAuth(r)
+	info := &Info{Username: result.Username, ResponseHeaders: make(http.Header)}
+	if err == nil {
 		info.Authenticated = true
-		info.ResponseHeaders.Set(AuthenticationInfoHeaderName(a.IsProxy), *authinfo)
+		info.ResponseHeaders.Set(AuthenticationInfoHeaderName(a.IsProxy), result.Authinfo)
 	} else {
 		// return back digest XYZ-Authenticate header
 		if len(a.clients) > a.ClientCacheSize+a.ClientCacheTolerance {
@@ -278,9 +374,9 @@ func (a *DigestAuth) NewContext(ctx context.Context, r *http.Request) context.Co
 		nonce := RandomKey()
 		a.clients[nonce] = &digest_client{ncs_seen: NewBitSet(a.NcCacheSize),
 			last_seen: time.Now().UnixNano()}
-		value := fmt.Sprintf(`Digest realm="%s", nonce="%s", opaque="%s", algorithm="MD5", qop="auth"`,
-			a.Realm, nonce, a.Opaque)
-		if stale {
+		value := fmt.Sprintf(`Digest realm="%s", nonce="%s", opaque="%s", algorithm="%s", qop="%s"`,
+			a.Realm, nonce, a.Opaque, DigestAlgorithm, DigestQop)
+		if err == ErrDigestStaleNonce {
 			value += ", stale=true"
 		}
 		info.ResponseHeaders.Set(AuthenticateHeaderName(a.IsProxy), value)
