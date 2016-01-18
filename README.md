@@ -24,7 +24,7 @@ This is a complete working example for Basic auth:
     package main
 
     import (
-            auth "github.com/abbot/go-http-auth"
+            "github.com/abbot/go-http-auth"
             "fmt"
             "net/http"
     )
