@@ -119,7 +119,22 @@ func (da *DigestAuth) CheckAuth(r *http.Request) (username string, authinfo *str
 	username = ""
 	authinfo = nil
 	auth := DigestAuthParams(r)
-	if auth == nil || da.Opaque != auth["opaque"] || auth["algorithm"] != "MD5" || auth["qop"] != "auth" {
+	if auth == nil {
+		return
+	}
+	// RFC2617 Section 3.2.1 specifies that unset value of algorithm in
+	// WWW-Authenticate Response header should be treated as
+	// "MD5". According to section 3.2.2 the "algorithm" value in
+	// subsequent Request Authorization header must be set to whatever
+	// was supplied in the WWW-Authenticate Response header. This
+	// implementation always returns an algorithm in WWW-Authenticate
+	// header, however there seems to be broken clients in the wild
+	// which do not set the algorithm. Assume the unset algorithm in
+	// Authorization header to be equal to MD5.
+	if _, ok := auth["algorithm"]; !ok {
+		auth["algorithm"] = "MD5"
+	}
+	if da.Opaque != auth["opaque"] || auth["algorithm"] != "MD5" || auth["qop"] != "auth" {
 		return
 	}
 
