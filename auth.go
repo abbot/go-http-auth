@@ -88,12 +88,9 @@ type AuthenticatorInterface interface {
 
 // FromContext returns authentication information from the context or
 // nil if no such information present.
-func FromContext(ctx context.Context) *Info {
-	info, ok := ctx.Value(infoKey).(*Info)
-	if !ok {
-		return nil
-	}
-	return info
+func FromContext(ctx context.Context) (info *Info) {
+	info, _ = ctx.Value(infoKey).(*Info)
+	return
 }
 
 // AuthUsernameHeader is the header set by JustCheck functions. It
