@@ -1,7 +1,9 @@
 package auth
 
 import (
+	"os"
 	"testing"
+	"time"
 )
 
 func TestHtdigestFile(t *testing.T) {
@@ -30,4 +32,14 @@ func TestHtpasswdFile(t *testing.T) {
 	if passwd != "" {
 		t.Fatal("Got passwd for non-existant user:", passwd)
 	}
+}
+
+// TestConcurrent verifies potential race condition in users reading logic
+func TestConcurrent(t *testing.T) {
+	secrets := HtpasswdFileProvider("test.htpasswd")
+	os.Chtimes("test.htpasswd", time.Now(), time.Now())
+	go func() {
+		secrets("test", "blah")
+	}()
+	secrets("test", "blah")
 }
