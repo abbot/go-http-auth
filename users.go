@@ -81,7 +81,10 @@ func reload_htdigest(hf *HtdigestFile) {
  reload htdigest file on changes. Will panic on syntax errors in
  htdigest files.
 */
-func HtdigestFileProvider(filename string) SecretProvider {
+func HtdigestFileProvider(filename string) (SecretProvider,error) {
+	if _, err := os.Stat(filename); err != nil {
+		return nil,err
+	}
 	hf := &HtdigestFile{File: File{Path: filename}}
 	hf.Reload = func() { reload_htdigest(hf) }
 	return func(user, realm string) string {
@@ -97,7 +100,7 @@ func HtdigestFileProvider(filename string) SecretProvider {
 			return ""
 		}
 		return digest
-	}
+	},nil
 }
 
 /*
@@ -138,7 +141,10 @@ func reload_htpasswd(h *HtpasswdFile) {
  reload htpasswd file on changes. Will panic on syntax errors in
  htpasswd files. Realm argument of the SecretProvider is ignored.
 */
-func HtpasswdFileProvider(filename string) SecretProvider {
+func HtpasswdFileProvider(filename string) (SecretProvider,error) {
+	if _, err := os.Stat(filename); err != nil {
+		return nil,err
+	}
 	h := &HtpasswdFile{File: File{Path: filename}}
 	h.Reload = func() { reload_htpasswd(h) }
 	return func(user, realm string) string {
@@ -150,5 +156,5 @@ func HtpasswdFileProvider(filename string) SecretProvider {
 			return ""
 		}
 		return password
-	}
+	},nil
 }
