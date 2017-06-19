@@ -33,13 +33,13 @@ type AuthenticatedHandlerFunc func(http.ResponseWriter, *AuthenticatedRequest)
  Typical Authenticator usage is something like:
 
    authenticator := SomeAuthenticator(...)
-   http.HandleFunc("/", authenticator(my_handler))
+   http.Handle("/", authenticator(my_handler))
 
  Authenticator wrapper checks the user authentication and calls the
  wrapped function only after authentication has succeeded. Otherwise,
  it returns a handler which initiates the authentication procedure.
 */
-type Authenticator func(AuthenticatedHandlerFunc) http.HandlerFunc
+type Authenticator func(AuthenticatedHandlerFunc) http.Handler
 
 // Info contains authentication information for the request.
 type Info struct {
@@ -80,10 +80,10 @@ type AuthenticatorInterface interface {
 	// information extracted from the request.
 	NewContext(ctx context.Context, r *http.Request) context.Context
 
-	// Wrap returns an http.HandlerFunc which wraps
+	// Wrap returns an http.Handler which wraps
 	// AuthenticatedHandlerFunc with this authenticator's
 	// authentication checks.
-	Wrap(AuthenticatedHandlerFunc) http.HandlerFunc
+	Wrap(AuthenticatedHandlerFunc) http.Handler
 }
 
 // FromContext returns authentication information from the context or
@@ -101,9 +101,9 @@ func FromContext(ctx context.Context) *Info {
 // successful).
 const AuthUsernameHeader = "X-Authenticated-Username"
 
-func JustCheck(auth AuthenticatorInterface, wrapped http.HandlerFunc) http.HandlerFunc {
+func JustCheck(auth AuthenticatorInterface, wrapped http.Handler) http.Handler {
 	return auth.Wrap(func(w http.ResponseWriter, ar *AuthenticatedRequest) {
 		ar.Header.Set(AuthUsernameHeader, ar.Username)
-		wrapped(w, &ar.Request)
+		wrapped.ServeHTTP(w, &ar.Request)
 	})
 }

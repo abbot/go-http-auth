@@ -214,8 +214,8 @@ const DefaultClientCacheTolerance = 100
  secrets: SecretProvider which must return HA1 digests for the same
  realm as above.
 */
-func (a *DigestAuth) Wrap(wrapped AuthenticatedHandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func (a *DigestAuth) Wrap(wrapped AuthenticatedHandlerFunc) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if username, authinfo := a.CheckAuth(r); username == "" {
 			a.RequireAuth(w, r)
 		} else {
@@ -225,18 +225,18 @@ func (a *DigestAuth) Wrap(wrapped AuthenticatedHandlerFunc) http.HandlerFunc {
 			}
 			wrapped(w, ar)
 		}
-	}
+	})
 }
 
 /*
- JustCheck returns function which converts an http.HandlerFunc into a
- http.HandlerFunc which requires authentication. Username is passed as
+ JustCheck returns function which converts an http.Handler into a
+ http.Handler which requires authentication. Username is passed as
  an extra X-Authenticated-Username header.
 */
-func (a *DigestAuth) JustCheck(wrapped http.HandlerFunc) http.HandlerFunc {
+func (a *DigestAuth) JustCheck(wrapped http.Handler) http.Handler {
 	return a.Wrap(func(w http.ResponseWriter, ar *AuthenticatedRequest) {
 		ar.Header.Set(AuthUsernameHeader, ar.Username)
-		wrapped(w, &ar.Request)
+		wrapped.ServeHTTP(w, &ar.Request)
 	})
 }
 

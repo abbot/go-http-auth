@@ -132,20 +132,20 @@ func (a *BasicAuth) RequireAuth(w http.ResponseWriter, r *http.Request) {
 
 /*
  BasicAuthenticator returns a function, which wraps an
- AuthenticatedHandlerFunc converting it to http.HandlerFunc. This
+ AuthenticatedHandlerFunc converting it to http.Handler. This
  wrapper function checks the authentication and either sends back
  required authentication headers, or calls the wrapped function with
  authenticated username in the AuthenticatedRequest.
 */
-func (a *BasicAuth) Wrap(wrapped AuthenticatedHandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func (a *BasicAuth) Wrap(wrapped AuthenticatedHandlerFunc) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if username := a.CheckAuth(r); username == "" {
 			a.RequireAuth(w, r)
 		} else {
 			ar := &AuthenticatedRequest{Request: *r, Username: username}
 			wrapped(w, ar)
 		}
-	}
+	})
 }
 
 // NewContext returns a context carrying authentication information for the request.

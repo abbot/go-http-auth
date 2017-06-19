@@ -25,12 +25,13 @@ func Secret(user, realm string) string {
 	return ""
 }
 
-func regular_handler(w http.ResponseWriter, r *http.Request) {
+func regularHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "<html><body><h1>This application is unaware of authentication</h1></body></html>")
 }
 
 func main() {
 	authenticator := auth.NewBasicAuthenticator("example.com", Secret)
-	http.HandleFunc("/", auth.JustCheck(authenticator, regular_handler))
+	handler := http.HandlerFunc(regularHandler)
+	http.Handle("/", auth.JustCheck(authenticator, handler))
 	http.ListenAndServe(":8080", nil)
 }
