@@ -30,6 +30,6 @@ func handle(w http.ResponseWriter, r *auth.AuthenticatedRequest) {
 
 func main() {
 	authenticator := auth.NewBasicAuthenticator("example.com", Secret)
-	http.HandleFunc("/", authenticator.Wrap(handle))
+	http.Handle("/", authenticator.Wrap(handle))
 	http.ListenAndServe(":8080", nil)
 }
