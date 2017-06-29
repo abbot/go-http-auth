@@ -24,9 +24,10 @@ This is a complete working example for Basic auth:
     package main
 
     import (
-            "github.com/abbot/go-http-auth"
             "fmt"
             "net/http"
+
+            auth "github.com/abbot/go-http-auth"
     )
 
     func Secret(user, realm string) string {
