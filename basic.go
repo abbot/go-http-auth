@@ -142,7 +142,7 @@ func (a *BasicAuth) Wrap(wrapped AuthenticatedHandlerFunc) http.HandlerFunc {
 		if username := a.CheckAuth(r); username == "" {
 			a.RequireAuth(w, r)
 		} else {
-			ar := &AuthenticatedRequest{Request: *r, Username: username}
+			ar := &AuthenticatedRequest{Request: r, Username: username}
 			wrapped(w, ar)
 		}
 	}

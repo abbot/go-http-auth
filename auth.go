@@ -11,7 +11,7 @@ import (
  Request handlers must take AuthenticatedRequest instead of http.Request
 */
 type AuthenticatedRequest struct {
-	http.Request
+	*http.Request
 	/*
 	 Authenticated user name. Current API implies that Username is
 	 never empty, which means that authentication is always done
