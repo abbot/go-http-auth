@@ -29,6 +29,16 @@ type DigestAuth struct {
 	// proxy server. When nil, NormalHeaders are used.
 	Headers *Headers
 
+	cache DigestCache
+	mutex sync.Mutex
+}
+
+type DigestCache interface {
+	GetDigestClient(nonce string) (digest_client, bool)
+	SetDigestClient(nonce string, dc digest_client)
+}
+
+type LocalDigestCache struct {
 	/*
 	   Approximate size of Client's Cache. When actual number of
 	   tracked client nonces exceeds
@@ -38,11 +48,34 @@ type DigestAuth struct {
 	ClientCacheSize      int
 	ClientCacheTolerance int
 
-	clients map[string]*digest_client
-	mutex   sync.Mutex
+	clients map[string]digest_client
 }
 
-// check that DigestAuth implements AuthenticatorInterface
+func (dc *LocalDigestCache) GetDigestClient(nonce string) (digest_client, bool) {
+	client, ok := dc.clients[nonce]
+	return client, ok
+}
+
+func (dc *LocalDigestCache) SetDigestClient(nonce string, client digest_client) {
+	if len(dc.clients) > dc.ClientCacheSize+dc.ClientCacheTolerance {
+		dc.purge(2 * dc.ClientCacheTolerance)
+	}
+	dc.clients[nonce] = client
+}
+
+func (dc *LocalDigestCache) purge(count int) {
+	entries := make([]digest_cache_entry, 0, len(dc.clients))
+	for nonce, client := range dc.clients {
+		entries = append(entries, digest_cache_entry{nonce, client.last_seen})
+	}
+	cache := digest_cache(entries)
+	sort.Sort(cache)
+	for _, client := range cache[:count] {
+		delete(dc.clients, client.nonce)
+	}
+}
+
+// check that DigesctAuth implements AuthenticatorInterface
 var _ = (AuthenticatorInterface)((*DigestAuth)(nil))
 
 type digest_cache_entry struct {
@@ -65,30 +98,12 @@ func (c digest_cache) Swap(i, j int) {
 }
 
 /*
- Remove count oldest entries from DigestAuth.clients
-*/
-func (a *DigestAuth) Purge(count int) {
-	entries := make([]digest_cache_entry, 0, len(a.clients))
-	for nonce, client := range a.clients {
-		entries = append(entries, digest_cache_entry{nonce, client.last_seen})
-	}
-	cache := digest_cache(entries)
-	sort.Sort(cache)
-	for _, client := range cache[:count] {
-		delete(a.clients, client.nonce)
-	}
-}
-
-/*
  http.Handler for DigestAuth which initiates the authentication process
  (or requires reauthentication).
 */
 func (a *DigestAuth) RequireAuth(w http.ResponseWriter, r *http.Request) {
-	if len(a.clients) > a.ClientCacheSize+a.ClientCacheTolerance {
-		a.Purge(a.ClientCacheTolerance * 2)
-	}
 	nonce := RandomKey()
-	a.clients[nonce] = &digest_client{nc: 0, last_seen: time.Now().UnixNano()}
+	a.cache.SetDigestClient(nonce, digest_client{nc: 0, last_seen: time.Now().UnixNano()})
 	w.Header().Set(contentType, a.Headers.V().UnauthContentType)
 	w.Header().Set(a.Headers.V().Authenticate,
 		fmt.Sprintf(`Digest realm="%s", nonce="%s", opaque="%s", algorithm="MD5", qop="auth"`,
@@ -182,7 +197,7 @@ func (da *DigestAuth) CheckAuth(r *http.Request) (username string, authinfo *str
 		return "", nil
 	}
 
-	if client, ok := da.clients[auth["nonce"]]; !ok {
+	if client, ok := da.cache.GetDigestClient(auth["nonce"]); !ok {
 		return "", nil
 	} else {
 		if client.nc != 0 && client.nc >= nc && !da.IgnoreNonceCount {
@@ -190,6 +205,7 @@ func (da *DigestAuth) CheckAuth(r *http.Request) (username string, authinfo *str
 		}
 		client.nc = nc
 		client.last_seen = time.Now().UnixNano()
+		da.cache.SetDigestClient(auth["nonce"], client)
 	}
 
 	resp_HA2 := H(":" + auth["uri"])
@@ -249,11 +265,8 @@ func (a *DigestAuth) NewContext(ctx context.Context, r *http.Request) context.Co
 		info.ResponseHeaders.Set(a.Headers.V().AuthInfo, *authinfo)
 	} else {
 		// return back digest WWW-Authenticate header
-		if len(a.clients) > a.ClientCacheSize+a.ClientCacheTolerance {
-			a.Purge(a.ClientCacheTolerance * 2)
-		}
 		nonce := RandomKey()
-		a.clients[nonce] = &digest_client{nc: 0, last_seen: time.Now().UnixNano()}
+		a.cache.SetDigestClient(nonce, digest_client{nc: 0, last_seen: time.Now().UnixNano()})
 		info.ResponseHeaders.Set(a.Headers.V().Authenticate,
 			fmt.Sprintf(`Digest realm="%s", nonce="%s", opaque="%s", algorithm="MD5", qop="auth"`,
 				a.Realm, nonce, a.Opaque))
@@ -263,12 +276,19 @@ func (a *DigestAuth) NewContext(ctx context.Context, r *http.Request) context.Co
 
 func NewDigestAuthenticator(realm string, secrets SecretProvider) *DigestAuth {
 	da := &DigestAuth{
-		Opaque:               RandomKey(),
-		Realm:                realm,
-		Secrets:              secrets,
-		PlainTextSecrets:     false,
+		Opaque:           RandomKey(),
+		Realm:            realm,
+		Secrets:          secrets,
+		PlainTextSecrets: false,
+		cache:            NewLocalDigestCache(),
+	}
+	return da
+}
+
+func NewLocalDigestCache() DigestCache {
+	return &LocalDigestCache{
 		ClientCacheSize:      DefaultClientCacheSize,
 		ClientCacheTolerance: DefaultClientCacheTolerance,
-		clients:              map[string]*digest_client{}}
-	return da
+		clients:              map[string]digest_client{},
+	}
 }
