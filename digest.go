@@ -20,6 +20,7 @@ type digest_client struct {
 }
 
 type DigestAuth struct {
+	Algorithm        string
 	Realm            string
 	Opaque           string
 	Secrets          SecretProvider
@@ -91,8 +92,8 @@ func (a *DigestAuth) RequireAuth(w http.ResponseWriter, r *http.Request) {
 	a.clients[nonce] = &digest_client{nc: 0, last_seen: time.Now().UnixNano()}
 	w.Header().Set(contentType, a.Headers.V().UnauthContentType)
 	w.Header().Set(a.Headers.V().Authenticate,
-		fmt.Sprintf(`Digest realm="%s", nonce="%s", opaque="%s", algorithm="MD5", qop="auth"`,
-			a.Realm, nonce, a.Opaque))
+		fmt.Sprintf(`Digest realm="%s", nonce="%s", opaque="%s", algorithm="%s", qop="auth"`,
+			a.Realm, nonce, a.Opaque, a.Algorithm))
 	w.WriteHeader(a.Headers.V().UnauthCode)
 	w.Write([]byte(a.Headers.V().UnauthResponse))
 }
@@ -138,7 +139,12 @@ func (da *DigestAuth) CheckAuth(r *http.Request) (username string, authinfo *str
 	if _, ok := auth["algorithm"]; !ok {
 		auth["algorithm"] = "MD5"
 	}
-	if da.Opaque != auth["opaque"] || auth["algorithm"] != "MD5" || auth["qop"] != "auth" {
+	if da.Opaque != auth["opaque"] || auth["qop"] != "auth" {
+		return "", nil
+	}
+
+	H, ok := algorithms[strings.ToUpper(auth["algorithm"])]
+	if !ok {
 		return "", nil
 	}
 
@@ -255,14 +261,15 @@ func (a *DigestAuth) NewContext(ctx context.Context, r *http.Request) context.Co
 		nonce := RandomKey()
 		a.clients[nonce] = &digest_client{nc: 0, last_seen: time.Now().UnixNano()}
 		info.ResponseHeaders.Set(a.Headers.V().Authenticate,
-			fmt.Sprintf(`Digest realm="%s", nonce="%s", opaque="%s", algorithm="MD5", qop="auth"`,
-				a.Realm, nonce, a.Opaque))
+			fmt.Sprintf(`Digest realm="%s", nonce="%s", opaque="%s", algorithm="%s", qop="auth"`,
+				a.Realm, nonce, a.Opaque, a.Algorithm))
 	}
 	return context.WithValue(ctx, infoKey, info)
 }
 
 func NewDigestAuthenticator(realm string, secrets SecretProvider) *DigestAuth {
 	da := &DigestAuth{
+		Algorithm:            "MD5", // NOT RECOMMENDED according to RFC 7616
 		Opaque:               RandomKey(),
 		Realm:                realm,
 		Secrets:              secrets,
