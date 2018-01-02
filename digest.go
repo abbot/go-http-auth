@@ -39,7 +39,7 @@ type DigestAuth struct {
 	ClientCacheTolerance int
 
 	clients map[string]*digest_client
-	mutex   sync.Mutex
+	mutex   sync.RWMutex
 }
 
 // check that DigestAuth implements AuthenticatorInterface
@@ -68,15 +68,21 @@ func (c digest_cache) Swap(i, j int) {
  Remove count oldest entries from DigestAuth.clients
 */
 func (a *DigestAuth) Purge(count int) {
-	entries := make([]digest_cache_entry, 0, len(a.clients))
+	a.mutex.RLock()
+
+	var entries digest_cache
 	for nonce, client := range a.clients {
 		entries = append(entries, digest_cache_entry{nonce, client.last_seen})
 	}
-	cache := digest_cache(entries)
-	sort.Sort(cache)
-	for _, client := range cache[:count] {
+	a.mutex.RUnlock()
+
+	sort.Sort(entries)
+
+	a.mutex.Lock()
+	for _, client := range entries[:count] {
 		delete(a.clients, client.nonce)
 	}
+	a.mutex.Unlock()
 }
 
 /*
@@ -84,11 +90,19 @@ func (a *DigestAuth) Purge(count int) {
  (or requires reauthentication).
 */
 func (a *DigestAuth) RequireAuth(w http.ResponseWriter, r *http.Request) {
-	if len(a.clients) > a.ClientCacheSize+a.ClientCacheTolerance {
+	a.mutex.RLock()
+	lClients := len(a.clients)
+	a.mutex.RUnlock()
+
+	if lClients > a.ClientCacheSize+a.ClientCacheTolerance {
 		a.Purge(a.ClientCacheTolerance * 2)
 	}
+
 	nonce := RandomKey()
+	a.mutex.Lock()
 	a.clients[nonce] = &digest_client{nc: 0, last_seen: time.Now().UnixNano()}
+	a.mutex.Unlock()
+
 	w.Header().Set(contentType, a.Headers.V().UnauthContentType)
 	w.Header().Set(a.Headers.V().Authenticate,
 		fmt.Sprintf(`Digest realm="%s", nonce="%s", opaque="%s", algorithm="MD5", qop="auth"`,
@@ -118,8 +132,6 @@ func DigestAuthParams(authorization string) map[string]string {
  Authentication-Info response header.
 */
 func (da *DigestAuth) CheckAuth(r *http.Request) (username string, authinfo *string) {
-	da.mutex.Lock()
-	defer da.mutex.Unlock()
 	username = ""
 	authinfo = nil
 	auth := DigestAuthParams(r.Header.Get(da.Headers.V().Authorization))
@@ -181,6 +193,9 @@ func (da *DigestAuth) CheckAuth(r *http.Request) (username string, authinfo *str
 	if err != nil {
 		return "", nil
 	}
+
+	da.mutex.Lock()
+	defer da.mutex.Unlock()
 
 	if client, ok := da.clients[auth["nonce"]]; !ok {
 		return "", nil
@@ -244,6 +259,7 @@ func (a *DigestAuth) JustCheck(wrapped http.HandlerFunc) http.HandlerFunc {
 func (a *DigestAuth) NewContext(ctx context.Context, r *http.Request) context.Context {
 	username, authinfo := a.CheckAuth(r)
 	info := &Info{Username: username, ResponseHeaders: make(http.Header)}
+
 	if username != "" {
 		info.Authenticated = true
 		info.ResponseHeaders.Set(a.Headers.V().AuthInfo, *authinfo)
@@ -253,7 +269,10 @@ func (a *DigestAuth) NewContext(ctx context.Context, r *http.Request) context.Co
 			a.Purge(a.ClientCacheTolerance * 2)
 		}
 		nonce := RandomKey()
+		a.mutex.Lock()
 		a.clients[nonce] = &digest_client{nc: 0, last_seen: time.Now().UnixNano()}
+		a.mutex.Unlock()
+
 		info.ResponseHeaders.Set(a.Headers.V().Authenticate,
 			fmt.Sprintf(`Digest realm="%s", nonce="%s", opaque="%s", algorithm="MD5", qop="auth"`,
 				a.Realm, nonce, a.Opaque))
