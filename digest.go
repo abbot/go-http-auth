@@ -195,6 +195,8 @@ func (da *DigestAuth) CheckAuth(r *http.Request) (username string, authinfo *str
 	}
 
 	da.mutex.Lock()
+	defer da.mutex.Unlock()
+
 	if client, ok := da.clients[auth["nonce"]]; !ok {
 		return "", nil
 	} else {
@@ -204,7 +206,6 @@ func (da *DigestAuth) CheckAuth(r *http.Request) (username string, authinfo *str
 		client.nc = nc
 		client.last_seen = time.Now().UnixNano()
 	}
-	da.mutex.Unlock()
 
 	resp_HA2 := H(":" + auth["uri"])
 	rspauth := H(strings.Join([]string{HA1, auth["nonce"], auth["nc"], auth["cnonce"], auth["qop"], resp_HA2}, ":"))
