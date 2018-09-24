@@ -91,7 +91,7 @@ func (a *DigestAuth) RequireAuth(w http.ResponseWriter, r *http.Request) {
 	a.clients[nonce] = &digest_client{nc: 0, last_seen: time.Now().UnixNano()}
 	w.Header().Set(contentType, a.Headers.V().UnauthContentType)
 	w.Header().Set(a.Headers.V().Authenticate,
-		fmt.Sprintf(`Digest realm="%s", nonce="%s", opaque="%s", algorithm="MD5", qop="auth"`,
+		fmt.Sprintf(`Digest realm="%s", nonce="%s", opaque="%s", algorithm=MD5, qop="auth"`,
 			a.Realm, nonce, a.Opaque))
 	w.WriteHeader(a.Headers.V().UnauthCode)
 	w.Write([]byte(a.Headers.V().UnauthResponse))
@@ -255,7 +255,7 @@ func (a *DigestAuth) NewContext(ctx context.Context, r *http.Request) context.Co
 		nonce := RandomKey()
 		a.clients[nonce] = &digest_client{nc: 0, last_seen: time.Now().UnixNano()}
 		info.ResponseHeaders.Set(a.Headers.V().Authenticate,
-			fmt.Sprintf(`Digest realm="%s", nonce="%s", opaque="%s", algorithm="MD5", qop="auth"`,
+			fmt.Sprintf(`Digest realm="%s", nonce="%s", opaque="%s", algorithm=MD5, qop="auth"`,
 				a.Realm, nonce, a.Opaque))
 	}
 	return context.WithValue(ctx, infoKey, info)
