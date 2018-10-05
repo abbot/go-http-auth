@@ -32,6 +32,6 @@ func TestParsePairs(t *testing.T) {
 	got := ParsePairs(header)
 
 	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("failed to correctly parse pairs, got %v, want %v\ndiff: %s", got, want)
+		t.Fatalf("failed to correctly parse pairs, got %v, want %v", got, want)
 	}
 }
