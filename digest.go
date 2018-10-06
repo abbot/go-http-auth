@@ -227,9 +227,6 @@ const DefaultClientCacheTolerance = 100
  realm as above.
 */
 func (a *DigestAuth) Wrap(wrapped AuthenticatedHandlerFunc) http.HandlerFunc {
-	a.mutex.RLock()
-	defer a.mutex.RUnlock()
-
 	return func(w http.ResponseWriter, r *http.Request) {
 		if username, authinfo := a.CheckAuth(r); username == "" {
 			a.RequireAuth(w, r)
