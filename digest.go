@@ -194,15 +194,15 @@ func (da *DigestAuth) CheckAuth(r *http.Request) (username string, authinfo *str
 		return "", nil
 	}
 
-	if client, ok := da.clients[auth["nonce"]]; !ok {
+	client, ok := da.clients[auth["nonce"]]
+	if !ok {
 		return "", nil
-	} else {
-		if client.nc != 0 && client.nc >= nc && !da.IgnoreNonceCount {
-			return "", nil
-		}
-		client.nc = nc
-		client.lastSeen = time.Now().UnixNano()
 	}
+	if client.nc != 0 && client.nc >= nc && !da.IgnoreNonceCount {
+		return "", nil
+	}
+	client.nc = nc
+	client.lastSeen = time.Now().UnixNano()
 
 	respHA2 := H(":" + auth["uri"])
 	rspauth := H(strings.Join([]string{HA1, auth["nonce"], auth["nc"], auth["cnonce"], auth["qop"], respHA2}, ":"))
