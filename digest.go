@@ -65,48 +65,48 @@ func (c digest_cache) Swap(i, j int) {
 }
 
 /*
- Purge, Remove count oldest entries from DigestAuth.clients
+ Purge removes count oldest entries from DigestAuth.clients
 */
-func (da *DigestAuth) Purge(count int) {
-	da.mutex.Lock()
-	entries := make([]digest_cache_entry, 0, len(da.clients))
-	for nonce, client := range da.clients {
+func (a *DigestAuth) Purge(count int) {
+	a.mutex.Lock()
+	entries := make([]digest_cache_entry, 0, len(a.clients))
+	for nonce, client := range a.clients {
 		entries = append(entries, digest_cache_entry{nonce, client.last_seen})
 	}
 	cache := digest_cache(entries)
 	sort.Sort(cache)
 	for _, client := range cache[:count] {
-		delete(da.clients, client.nonce)
+		delete(a.clients, client.nonce)
 	}
-	da.mutex.Unlock()
+	a.mutex.Unlock()
 }
 
 /*
  http.Handler for DigestAuth which initiates the authentication process
  (or requires reauthentication).
 */
-func (da *DigestAuth) RequireAuth(w http.ResponseWriter, r *http.Request) {
-	da.mutex.RLock()
-	if len(da.clients) > da.ClientCacheSize+da.ClientCacheTolerance {
-		da.mutex.RUnlock()
-		da.Purge(da.ClientCacheTolerance * 2)
+func (a *DigestAuth) RequireAuth(w http.ResponseWriter, r *http.Request) {
+	a.mutex.RLock()
+	if len(a.clients) > a.ClientCacheSize+a.ClientCacheTolerance {
+		a.mutex.RUnlock()
+		a.Purge(a.ClientCacheTolerance * 2)
 	} else {
-		da.mutex.RUnlock()
+		a.mutex.RUnlock()
 	}
 	nonce := RandomKey()
 
-	da.mutex.Lock()
-	da.clients[nonce] = &digest_client{nc: 0, last_seen: time.Now().UnixNano()}
-	da.mutex.Unlock()
+	a.mutex.Lock()
+	a.clients[nonce] = &digest_client{nc: 0, last_seen: time.Now().UnixNano()}
+	a.mutex.Unlock()
 
-	da.mutex.RLock()
-	w.Header().Set(contentType, da.Headers.V().UnauthContentType)
-	w.Header().Set(da.Headers.V().Authenticate,
+	a.mutex.RLock()
+	w.Header().Set(contentType, a.Headers.V().UnauthContentType)
+	w.Header().Set(a.Headers.V().Authenticate,
 		fmt.Sprintf(`Digest realm="%s", nonce="%s", opaque="%s", algorithm="MD5", qop="auth"`,
-			da.Realm, nonce, da.Opaque))
-	w.WriteHeader(da.Headers.V().UnauthCode)
-	w.Write([]byte(da.Headers.V().UnauthResponse))
-	da.mutex.RUnlock()
+			a.Realm, nonce, a.Opaque))
+	w.WriteHeader(a.Headers.V().UnauthCode)
+	w.Write([]byte(a.Headers.V().UnauthResponse))
+	a.mutex.RUnlock()
 }
 
 /*
@@ -226,17 +226,17 @@ const DefaultClientCacheTolerance = 100
  secrets: SecretProvider which must return HA1 digests for the same
  realm as above.
 */
-func (da *DigestAuth) Wrap(wrapped AuthenticatedHandlerFunc) http.HandlerFunc {
-	da.mutex.RLock()
-	defer da.mutex.RUnlock()
+func (a *DigestAuth) Wrap(wrapped AuthenticatedHandlerFunc) http.HandlerFunc {
+	a.mutex.RLock()
+	defer a.mutex.RUnlock()
 
 	return func(w http.ResponseWriter, r *http.Request) {
-		if username, authinfo := da.CheckAuth(r); username == "" {
-			da.RequireAuth(w, r)
+		if username, authinfo := a.CheckAuth(r); username == "" {
+			a.RequireAuth(w, r)
 		} else {
 			ar := &AuthenticatedRequest{Request: *r, Username: username}
 			if authinfo != nil {
-				w.Header().Set(da.Headers.V().AuthInfo, *authinfo)
+				w.Header().Set(a.Headers.V().AuthInfo, *authinfo)
 			}
 			wrapped(w, ar)
 		}
@@ -248,33 +248,33 @@ func (da *DigestAuth) Wrap(wrapped AuthenticatedHandlerFunc) http.HandlerFunc {
  http.HandlerFunc which requires authentication. Username is passed as
  an extra X-Authenticated-Username header.
 */
-func (da *DigestAuth) JustCheck(wrapped http.HandlerFunc) http.HandlerFunc {
-	return da.Wrap(func(w http.ResponseWriter, ar *AuthenticatedRequest) {
+func (a *DigestAuth) JustCheck(wrapped http.HandlerFunc) http.HandlerFunc {
+	return a.Wrap(func(w http.ResponseWriter, ar *AuthenticatedRequest) {
 		ar.Header.Set(AuthUsernameHeader, ar.Username)
 		wrapped(w, &ar.Request)
 	})
 }
 
 // NewContext returns a context carrying authentication information for the request.
-func (da *DigestAuth) NewContext(ctx context.Context, r *http.Request) context.Context {
-	da.mutex.Lock()
-	username, authinfo := da.CheckAuth(r)
+func (a *DigestAuth) NewContext(ctx context.Context, r *http.Request) context.Context {
+	a.mutex.Lock()
+	username, authinfo := a.CheckAuth(r)
 	info := &Info{Username: username, ResponseHeaders: make(http.Header)}
 	if username != "" {
 		info.Authenticated = true
-		info.ResponseHeaders.Set(da.Headers.V().AuthInfo, *authinfo)
+		info.ResponseHeaders.Set(a.Headers.V().AuthInfo, *authinfo)
 	} else {
 		// return back digest WWW-Authenticate header
-		if len(da.clients) > da.ClientCacheSize+da.ClientCacheTolerance {
-			da.Purge(da.ClientCacheTolerance * 2)
+		if len(a.clients) > a.ClientCacheSize+a.ClientCacheTolerance {
+			a.Purge(a.ClientCacheTolerance * 2)
 		}
 		nonce := RandomKey()
-		da.clients[nonce] = &digest_client{nc: 0, last_seen: time.Now().UnixNano()}
-		info.ResponseHeaders.Set(da.Headers.V().Authenticate,
+		a.clients[nonce] = &digest_client{nc: 0, last_seen: time.Now().UnixNano()}
+		info.ResponseHeaders.Set(a.Headers.V().Authenticate,
 			fmt.Sprintf(`Digest realm="%s", nonce="%s", opaque="%s", algorithm="MD5", qop="auth"`,
-				da.Realm, nonce, da.Opaque))
+				a.Realm, nonce, a.Opaque))
 	}
-	da.mutex.Unlock()
+	a.mutex.Unlock()
 	return context.WithValue(ctx, infoKey, info)
 }
 
