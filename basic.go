@@ -74,7 +74,7 @@ func (a *BasicAuth) CheckAuth(r *http.Request) string {
 		return ""
 	}
 
-	if !CheckSecret(secret, password) {
+	if !CheckSecret(password, secret) {
 		return ""
 	}
 
@@ -83,7 +83,7 @@ func (a *BasicAuth) CheckAuth(r *http.Request) string {
 
 // CheckSecret returns true if the password matches the encrypted
 // secret.
-func CheckSecret(secret, password string) bool {
+func CheckSecret(password, secret string) bool {
 	compare := compareFuncs[0].compare
 	for _, cmp := range compareFuncs[1:] {
 		if strings.HasPrefix(secret, cmp.prefix) {
