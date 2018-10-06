@@ -18,7 +18,7 @@ import (
 	"golang.org/x/net/context"
 )
 
-func Secret(user, realm string) string {
+func secret(user, realm string) string {
 	if user == "john" {
 		// password is "hello"
 		return "b98e16cbc3d01734b264adba7baa3bf9"
@@ -26,13 +26,13 @@ func Secret(user, realm string) string {
 	return ""
 }
 
-type ContextHandler interface {
+type contextHandler interface {
 	ServeHTTP(ctx context.Context, w http.ResponseWriter, r *http.Request)
 }
 
-type ContextHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request)
+type contextHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request)
 
-func (f ContextHandlerFunc) ServeHTTP(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+func (f contextHandlerFunc) ServeHTTP(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	f(ctx, w, r)
 }
 
@@ -46,7 +46,7 @@ func handle(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "<html><body><h1>Hello, %s!</h1></body></html>", authInfo.Username)
 }
 
-func authenticatedHandler(a auth.AuthenticatorInterface, h ContextHandler) http.Handler {
+func authenticatedHandler(a auth.AuthenticatorInterface, h contextHandler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := a.NewContext(context.Background(), r)
 		h.ServeHTTP(ctx, w, r)
@@ -54,7 +54,7 @@ func authenticatedHandler(a auth.AuthenticatorInterface, h ContextHandler) http.
 }
 
 func main() {
-	authenticator := auth.NewDigestAuthenticator("example.com", Secret)
-	http.Handle("/", authenticatedHandler(authenticator, ContextHandlerFunc(handle)))
+	authenticator := auth.NewDigestAuthenticator("example.com", secret)
+	http.Handle("/", authenticatedHandler(authenticator, contextHandlerFunc(handle)))
 	http.ListenAndServe(":8080", nil)
 }

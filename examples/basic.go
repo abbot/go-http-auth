@@ -11,12 +11,13 @@
 package main
 
 import (
-	auth ".."
 	"fmt"
 	"net/http"
+
+	auth ".."
 )
 
-func Secret(user, realm string) string {
+func secret(user, realm string) string {
 	if user == "john" {
 		// password is "hello"
 		return "$1$dlPL2MqE$oQmn16q49SqdmhenQuNgs1"
@@ -29,7 +30,7 @@ func handle(w http.ResponseWriter, r *auth.AuthenticatedRequest) {
 }
 
 func main() {
-	authenticator := auth.NewBasicAuthenticator("example.com", Secret)
+	authenticator := auth.NewBasicAuthenticator("example.com", secret)
 	http.HandleFunc("/", authenticator.Wrap(handle))
 	http.ListenAndServe(":8080", nil)
 }
