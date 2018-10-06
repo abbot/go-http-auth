@@ -23,7 +23,7 @@ func TestAuthDigest(t *testing.T) {
 	if u, _ := da.CheckAuth(r); u != "" {
 		t.Fatal("non-empty auth for bad request header")
 	}
-	r.Header.Set("Authorization", `Digest username="test", realm="example.com", nonce="Vb9BP/h81n3GpTTB", uri="/t2", cnonce="NjE4MTM2", nc=00000001, qop="auth", response="ffc357c4eba74773c8687e0bc724c9a3", opaque="U7H+ier3Ae8Skd/g", algorithm="MD5"`)
+	r.Header.Set("Authorization", `Digest username="test", realm="example.com", nonce="Vb9BP/h81n3GpTTB", uri="/t2", cnonce="NjE4MTM2", nc=00000001, qop="auth", response="ffc357c4eba74773c8687e0bc724c9a3", opaque="U7H+ier3Ae8Skd/g", algorithm=MD5`)
 	if u, _ := da.CheckAuth(r); u != "" {
 		t.Fatal("non-empty auth for unknown client")
 	}
@@ -59,7 +59,7 @@ func TestAuthDigest(t *testing.T) {
 	}
 
 	da.clients["+RbVXSbIoa1SaJk1"] = &digest_client{nc: 0, last_seen: time.Now().UnixNano()}
-	r.Header.Set("Authorization", `Digest username="test", realm="example.com", nonce="+RbVXSbIoa1SaJk1", uri="/", cnonce="NjE4NDkw", nc=00000001, qop="auth", response="c08918024d7faaabd5424654c4e3ad1c", opaque="U7H+ier3Ae8Skd/g", algorithm="MD5"`)
+	r.Header.Set("Authorization", `Digest username="test", realm="example.com", nonce="+RbVXSbIoa1SaJk1", uri="/", cnonce="NjE4NDkw", nc=00000001, qop="auth", response="c08918024d7faaabd5424654c4e3ad1c", opaque="U7H+ier3Ae8Skd/g", algorithm=MD5`)
 	if u, _ := da.CheckAuth(r); u != "test" {
 		t.Fatal("empty auth for valid request in subpath")
 	}
