@@ -4,10 +4,20 @@ import (
 	"bytes"
 	"crypto/md5"
 	"crypto/rand"
+	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/base64"
 	"fmt"
 	"net/http"
 	"strings"
+)
+
+var (
+	algorithms = map[string]func(string) string{
+		"MD5":         MD5,
+		"SHA-256":     SHA_256,
+		"SHA-512/256": SHA_512_256,
+	}
 )
 
 // RandomKey returns a random 16-byte base64 alphabet string
@@ -23,9 +33,23 @@ func RandomKey() string {
 	return base64.StdEncoding.EncodeToString(k)
 }
 
-// H function for MD5 algorithm (returns a lower-case hex MD5 digest)
-func H(data string) string {
+// Hashes data using MD5 and returns a lower-case hex digest
+func MD5(data string) string {
 	digest := md5.New()
+	digest.Write([]byte(data))
+	return fmt.Sprintf("%x", digest.Sum(nil))
+}
+
+// Hashes data using SHA-256 and returns a lower-case hex digest
+func SHA_256(data string) string {
+	digest := sha256.New()
+	digest.Write([]byte(data))
+	return fmt.Sprintf("%x", digest.Sum(nil))
+}
+
+// Hashes data using SHA-512/256 and returns a lower-case hex digest
+func SHA_512_256(data string) string {
+	digest := sha512.New512_256()
 	digest.Write([]byte(data))
 	return fmt.Sprintf("%x", digest.Sum(nil))
 }
