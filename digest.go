@@ -69,6 +69,7 @@ func (c digest_cache) Swap(i, j int) {
 */
 func (a *DigestAuth) Purge(count int) {
 	a.mutex.Lock()
+	defer a.mutex.Unlock()
 	entries := make([]digest_cache_entry, 0, len(a.clients))
 	for nonce, client := range a.clients {
 		entries = append(entries, digest_cache_entry{nonce, client.last_seen})
@@ -78,7 +79,6 @@ func (a *DigestAuth) Purge(count int) {
 	for _, client := range cache[:count] {
 		delete(a.clients, client.nonce)
 	}
-	a.mutex.Unlock()
 }
 
 /*
@@ -87,11 +87,11 @@ func (a *DigestAuth) Purge(count int) {
 */
 func (a *DigestAuth) RequireAuth(w http.ResponseWriter, r *http.Request) {
 	a.mutex.RLock()
-	if len(a.clients) > a.ClientCacheSize+a.ClientCacheTolerance {
-		a.mutex.RUnlock()
+	clientsLen := len(a.clients)
+	a.mutex.RUnlock()
+
+	if clientsLen > a.ClientCacheSize+a.ClientCacheTolerance {
 		a.Purge(a.ClientCacheTolerance * 2)
-	} else {
-		a.mutex.RUnlock()
 	}
 	nonce := RandomKey()
 
@@ -258,6 +258,7 @@ func (a *DigestAuth) JustCheck(wrapped http.HandlerFunc) http.HandlerFunc {
 // NewContext returns a context carrying authentication information for the request.
 func (a *DigestAuth) NewContext(ctx context.Context, r *http.Request) context.Context {
 	a.mutex.Lock()
+	defer a.mutex.Unlock()
 	username, authinfo := a.CheckAuth(r)
 	info := &Info{Username: username, ResponseHeaders: make(http.Header)}
 	if username != "" {
@@ -274,7 +275,6 @@ func (a *DigestAuth) NewContext(ctx context.Context, r *http.Request) context.Co
 			fmt.Sprintf(`Digest realm="%s", nonce="%s", opaque="%s", algorithm="MD5", qop="auth"`,
 				a.Realm, nonce, a.Opaque))
 	}
-	a.mutex.Unlock()
 	return context.WithValue(ctx, infoKey, info)
 }
 
