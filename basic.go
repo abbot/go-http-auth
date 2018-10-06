@@ -66,24 +66,24 @@ var _ = (AuthenticatorInterface)((*BasicAuth)(nil))
  Supports MD5 and SHA1 password entries
 */
 func (a *BasicAuth) CheckAuth(r *http.Request) string {
-	s := strings.SplitN(r.Header.Get(a.Headers.V().Authorization), " ", 2)
-	if len(s) != 2 || s[0] != "Basic" {
+	user, password, ok := r.BasicAuth()
+	if !ok {
 		return ""
 	}
 
-	b, err := base64.StdEncoding.DecodeString(s[1])
-	if err != nil {
-		return ""
-	}
-	pair := strings.SplitN(string(b), ":", 2)
-	if len(pair) != 2 {
-		return ""
-	}
-	user, password := pair[0], pair[1]
 	secret := a.Secrets(user, a.Realm)
 	if secret == "" {
 		return ""
 	}
+
+	if !CheckSecret(secret, password) {
+		return ""
+	}
+
+	return user
+}
+
+func CheckSecret(secret, password string) bool {
 	compare := compareFuncs[0].compare
 	for _, cmp := range compareFuncs[1:] {
 		if strings.HasPrefix(secret, cmp.prefix) {
@@ -91,10 +91,7 @@ func (a *BasicAuth) CheckAuth(r *http.Request) string {
 			break
 		}
 	}
-	if compare([]byte(secret), []byte(password)) != nil {
-		return ""
-	}
-	return pair[0]
+	return compare([]byte(secret), []byte(password)) == nil
 }
 
 func compareShaHashAndPassword(hashedPassword, password []byte) error {
