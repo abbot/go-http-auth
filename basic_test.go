@@ -3,7 +3,6 @@ package auth
 import (
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 )
 
@@ -12,17 +11,6 @@ var basicSecrets = map[string]string{
 	"test2":  "$apr1$a0j62R97$mYqFkloXH0/UOaUnAiV2b0",
 	"test16": "$apr1$JI4wh3am$AmhephVqLTUyAVpFQeHZC0",
 	"test3":  "$2y$05$ih3C91zUBSTFcAh2mQnZYuob0UOZVEf16wl/ukgjDhjvj.xgM1WwS",
-}
-
-type credentials struct {
-	username, password string
-}
-
-var basicCredentials = []credentials{
-	{"test", "hello"},
-	{"test2", "hello2"},
-	{"test3", "hello3"},
-	{"test16", "topsecret"},
 }
 
 func basicProvider(user, realm string) string {
@@ -53,51 +41,21 @@ func TestBasicCheckAuthFailsOnBadHeaders(t *testing.T) {
 func TestBasicCheckAuth(t *testing.T) {
 	t.Parallel()
 	a := &BasicAuth{Realm: "example.com", Secrets: basicProvider}
-	for _, creds := range basicCredentials {
+	for _, tt := range []struct {
+		username, password string
+	}{
+		{"test", "hello"},
+		{"test2", "hello2"},
+		{"test3", "hello3"},
+		{"test16", "topsecret"},
+	} {
 		r, err := http.NewRequest("GET", "http://example.com", nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		r.SetBasicAuth(creds.username, creds.password)
-		if a.CheckAuth(r) != creds.username {
-			t.Fatalf("CheckAuth failed for user '%s'", creds.username)
-		}
-	}
-}
-
-func TestBasicAuthContext(t *testing.T) {
-	t.Parallel()
-	a := &BasicAuth{Realm: "example.com", Secrets: basicProvider}
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := a.NewContext(r.Context(), r)
-		authInfo := FromContext(ctx)
-		authInfo.UpdateHeaders(w.Header())
-		if authInfo == nil || !authInfo.Authenticated {
-			http.Error(w, "error", http.StatusUnauthorized)
-			return
-		}
-		fmt.Fprint(w, authInfo.Username)
-	}))
-	defer ts.Close()
-	client := ts.Client()
-	for _, tt := range []struct {
-		username, password string
-		want               int
-	}{
-		{"", "", http.StatusUnauthorized},
-		{"test", "hello", http.StatusOK},
-	} {
-		r, err := http.NewRequest("GET", ts.URL, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
 		r.SetBasicAuth(tt.username, tt.password)
-		resp, err := client.Do(r)
-		if err != nil {
-			t.Fatalf("HTTP request failed: %v", err)
-		}
-		if resp.StatusCode != tt.want {
-			t.Errorf("user %q, password %q: got status %d, want %d", tt.username, tt.password, resp.StatusCode, tt.want)
+		if a.CheckAuth(r) != tt.username {
+			t.Fatalf("CheckAuth failed for user '%s'", tt.username)
 		}
 	}
 }
