@@ -7,6 +7,7 @@ import (
 )
 
 func TestHtdigestFile(t *testing.T) {
+	t.Parallel()
 	secrets := HtdigestFileProvider("test.htdigest")
 	digest := secrets("test", "example.com")
 	if digest != "aa78524fceb0e50fd8ca96dd818b8cf9" {
@@ -23,6 +24,7 @@ func TestHtdigestFile(t *testing.T) {
 }
 
 func TestHtpasswdFile(t *testing.T) {
+	t.Parallel()
 	secrets := HtpasswdFileProvider("test.htpasswd")
 	passwd := secrets("test", "blah")
 	if passwd != "{SHA}qvTGHdzF6KLavt4PO0gs2a6pQ00=" {
@@ -36,6 +38,7 @@ func TestHtpasswdFile(t *testing.T) {
 
 // TestConcurrent verifies potential race condition in users reading logic
 func TestConcurrent(t *testing.T) {
+	t.Parallel()
 	secrets := HtpasswdFileProvider("test.htpasswd")
 	os.Chtimes("test.htpasswd", time.Now(), time.Now())
 	go func() {

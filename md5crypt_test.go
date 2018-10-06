@@ -3,6 +3,7 @@ package auth
 import "testing"
 
 func Test_MD5Crypt(t *testing.T) {
+	t.Parallel()
 	test_cases := [][]string{
 		{"apache", "$apr1$J.w5a/..$IW9y6DR0oO/ADuhlMF5/X1"},
 		{"pass", "$1$YeNsbWdH$wvOF8JdqsoiLix754LTW90"},

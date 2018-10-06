@@ -8,6 +8,7 @@ import (
 )
 
 func TestAuthDigest(t *testing.T) {
+	t.Parallel()
 	secrets := HtdigestFileProvider("test.htdigest")
 	da := &DigestAuth{Opaque: "U7H+ier3Ae8Skd/g",
 		Realm:   "example.com",
@@ -66,6 +67,7 @@ func TestAuthDigest(t *testing.T) {
 }
 
 func TestDigestAuthParams(t *testing.T) {
+	t.Parallel()
 	const authorization = `Digest username="test", realm="", nonce="FRPnGdb8lvM1UHhi", uri="/css?family=Source+Sans+Pro:400,700,400italic,700italic|Source+Code+Pro", algorithm=MD5, response="fdcdd78e5b306ffed343d0ec3967f2e5", opaque="lEgVjogmIar2fg/t", qop=auth, nc=00000001, cnonce="e76b05db27a3b323"`
 
 	params := DigestAuthParams(authorization)
