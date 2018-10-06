@@ -39,7 +39,7 @@ type DigestAuth struct {
 	ClientCacheTolerance int
 
 	clients map[string]*digest_client
-	mutex   sync.Mutex
+	mutex   sync.RWMutex
 }
 
 // check that DigestAuth implements AuthenticatorInterface
@@ -65,9 +65,11 @@ func (c digest_cache) Swap(i, j int) {
 }
 
 /*
- Remove count oldest entries from DigestAuth.clients
+ Purge removes count oldest entries from DigestAuth.clients
 */
 func (a *DigestAuth) Purge(count int) {
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
 	entries := make([]digest_cache_entry, 0, len(a.clients))
 	for nonce, client := range a.clients {
 		entries = append(entries, digest_cache_entry{nonce, client.last_seen})
@@ -84,17 +86,27 @@ func (a *DigestAuth) Purge(count int) {
  (or requires reauthentication).
 */
 func (a *DigestAuth) RequireAuth(w http.ResponseWriter, r *http.Request) {
-	if len(a.clients) > a.ClientCacheSize+a.ClientCacheTolerance {
+	a.mutex.RLock()
+	clientsLen := len(a.clients)
+	a.mutex.RUnlock()
+
+	if clientsLen > a.ClientCacheSize+a.ClientCacheTolerance {
 		a.Purge(a.ClientCacheTolerance * 2)
 	}
 	nonce := RandomKey()
+
+	a.mutex.Lock()
 	a.clients[nonce] = &digest_client{nc: 0, last_seen: time.Now().UnixNano()}
+	a.mutex.Unlock()
+
+	a.mutex.RLock()
 	w.Header().Set(contentType, a.Headers.V().UnauthContentType)
 	w.Header().Set(a.Headers.V().Authenticate,
 		fmt.Sprintf(`Digest realm="%s", nonce="%s", opaque="%s", algorithm="MD5", qop="auth"`,
 			a.Realm, nonce, a.Opaque))
 	w.WriteHeader(a.Headers.V().UnauthCode)
 	w.Write([]byte(a.Headers.V().UnauthResponse))
+	a.mutex.RUnlock()
 }
 
 /*
@@ -118,8 +130,8 @@ func DigestAuthParams(authorization string) map[string]string {
  Authentication-Info response header.
 */
 func (da *DigestAuth) CheckAuth(r *http.Request) (username string, authinfo *string) {
-	da.mutex.Lock()
-	defer da.mutex.Unlock()
+	da.mutex.RLock()
+	defer da.mutex.RUnlock()
 	username = ""
 	authinfo = nil
 	auth := DigestAuthParams(r.Header.Get(da.Headers.V().Authorization))
@@ -242,6 +254,8 @@ func (a *DigestAuth) JustCheck(wrapped http.HandlerFunc) http.HandlerFunc {
 
 // NewContext returns a context carrying authentication information for the request.
 func (a *DigestAuth) NewContext(ctx context.Context, r *http.Request) context.Context {
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
 	username, authinfo := a.CheckAuth(r)
 	info := &Info{Username: username, ResponseHeaders: make(http.Header)}
 	if username != "" {
@@ -261,6 +275,7 @@ func (a *DigestAuth) NewContext(ctx context.Context, r *http.Request) context.Co
 	return context.WithValue(ctx, infoKey, info)
 }
 
+// NewDigestAuthenticator generates a new DigestAuth object
 func NewDigestAuthenticator(realm string, secrets SecretProvider) *DigestAuth {
 	da := &DigestAuth{
 		Opaque:               RandomKey(),
