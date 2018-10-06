@@ -1,42 +1,61 @@
 package auth
 
 import (
-	"encoding/base64"
 	"fmt"
 	"net/http"
 	"testing"
 )
 
-func TestAuthBasic(t *testing.T) {
-	t.Parallel()
-	secrets := HtpasswdFileProvider("test.htpasswd")
-	a := &BasicAuth{Realm: "example.com", Secrets: secrets}
-	r := &http.Request{}
-	r.Method = "GET"
-	if a.CheckAuth(r) != "" {
-		t.Fatal("CheckAuth passed on empty headers")
-	}
-	r.Header = http.Header(make(map[string][]string))
-	r.Header.Set("Authorization", "Digest blabla ololo")
-	if a.CheckAuth(r) != "" {
-		t.Fatal("CheckAuth passed on bad headers")
-	}
-	r.Header.Set("Authorization", "Basic !@#")
-	if a.CheckAuth(r) != "" {
-		t.Fatal("CheckAuth passed on bad base64 data")
-	}
+var basicSecrets = map[string]string{
+	"test":   "{SHA}qvTGHdzF6KLavt4PO0gs2a6pQ00=",
+	"test2":  "$apr1$a0j62R97$mYqFkloXH0/UOaUnAiV2b0",
+	"test16": "$apr1$JI4wh3am$AmhephVqLTUyAVpFQeHZC0",
+	"test3":  "$2y$05$ih3C91zUBSTFcAh2mQnZYuob0UOZVEf16wl/ukgjDhjvj.xgM1WwS",
+}
 
-	data := [][]string{
+func basicProvider(user, realm string) string {
+	return basicSecrets[user]
+}
+
+func TestBasicCheckAuthFailsOnBadHeaders(t *testing.T) {
+	t.Parallel()
+	a := &BasicAuth{Realm: "example.com", Secrets: basicProvider}
+	for _, auth := range []string{
+		"",
+		"Digest blabla ololo",
+		"Basic !@#",
+	} {
+		r, err := http.NewRequest("GET", "http://example.com", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if auth != "" {
+			r.Header.Set("Authorization", auth)
+		}
+		if a.CheckAuth(r) != "" {
+			t.Errorf("CheckAuth returned a username for Authorization header %q", r.Header.Get("Authorization"))
+		}
+	}
+}
+
+func TestBasicCheckAuth(t *testing.T) {
+	t.Parallel()
+	a := &BasicAuth{Realm: "example.com", Secrets: basicProvider}
+	for _, tt := range []struct {
+		username, password string
+	}{
 		{"test", "hello"},
 		{"test2", "hello2"},
 		{"test3", "hello3"},
 		{"test16", "topsecret"},
-	}
-	for _, tc := range data {
-		auth := base64.StdEncoding.EncodeToString([]byte(tc[0] + ":" + tc[1]))
-		r.Header.Set("Authorization", "Basic "+auth)
-		if a.CheckAuth(r) != tc[0] {
-			t.Fatalf("CheckAuth failed for user '%s'", tc[0])
+	} {
+		r, err := http.NewRequest("GET", "http://example.com", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.SetBasicAuth(tt.username, tt.password)
+		if a.CheckAuth(r) != tt.username {
+			t.Fatalf("CheckAuth failed for user '%s'", tt.username)
 		}
 	}
 }
