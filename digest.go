@@ -19,6 +19,12 @@ type digestClient struct {
 	lastSeen int64
 }
 
+// DigestAuth is an authenticator implementation for 'Digest' HTTP Authentication scheme (RFC 7616).
+//
+// Note: this implementation was written following now deprecated RFC
+// 2617, and supports only MD5 algorithm.
+//
+// TODO: Add support for SHA-256 and SHA-512/256 algorithms.
 type DigestAuth struct {
 	Realm            string
 	Opaque           string
@@ -64,9 +70,7 @@ func (c digestCache) Swap(i, j int) {
 	c[i], c[j] = c[j], c[i]
 }
 
-/*
- Purge removes count oldest entries from DigestAuth.clients
-*/
+// Purge removes count oldest entries from DigestAuth.clients
 func (da *DigestAuth) Purge(count int) {
 	da.mutex.Lock()
 	defer da.mutex.Unlock()
@@ -81,10 +85,8 @@ func (da *DigestAuth) Purge(count int) {
 	}
 }
 
-/*
- http.Handler for DigestAuth which initiates the authentication process
- (or requires reauthentication).
-*/
+// RequireAuth is an http.HandlerFunc which initiates the
+// authentication process (or requires reauthentication).
 func (da *DigestAuth) RequireAuth(w http.ResponseWriter, r *http.Request) {
 	da.mutex.RLock()
 	clientsLen := len(da.clients)
@@ -109,11 +111,9 @@ func (da *DigestAuth) RequireAuth(w http.ResponseWriter, r *http.Request) {
 	da.mutex.RUnlock()
 }
 
-/*
- Parse Authorization header from the http.Request. Returns a map of
- auth parameters or nil if the header is not a valid parsable Digest
- auth header.
-*/
+// DigestAuthParams parses Authorization header from the
+// http.Request. Returns a map of auth parameters or nil if the header
+// is not a valid parsable Digest auth header.
 func DigestAuthParams(authorization string) map[string]string {
 	s := strings.SplitN(authorization, " ", 2)
 	if len(s) != 2 || s[0] != "Digest" {
@@ -123,12 +123,10 @@ func DigestAuthParams(authorization string) map[string]string {
 	return ParsePairs(s[1])
 }
 
-/*
- Check if request contains valid authentication data. Returns a pair
- of username, authinfo where username is the name of the authenticated
- user or an empty string and authinfo is the contents for the optional
- Authentication-Info response header.
-*/
+// CheckAuth checks whether the request contains valid authentication
+// data. Returns a pair of username, authinfo, where username is the
+// name of the authenticated user or an empty string and authinfo is
+// the contents for the optional Authentication-Info response header.
 func (da *DigestAuth) CheckAuth(r *http.Request) (username string, authinfo *string) {
 	da.mutex.RLock()
 	defer da.mutex.RUnlock()
@@ -211,21 +209,18 @@ func (da *DigestAuth) CheckAuth(r *http.Request) (username string, authinfo *str
 	return auth["username"], &info
 }
 
-/*
- Default values for ClientCacheSize and ClientCacheTolerance for DigestAuth
-*/
-const DefaultClientCacheSize = 1000
-const DefaultClientCacheTolerance = 100
+// Default values for ClientCacheSize and ClientCacheTolerance for DigestAuth
+const (
+	DefaultClientCacheSize      = 1000
+	DefaultClientCacheTolerance = 100
+)
 
-/*
- Wrap returns an Authenticator which uses HTTP Digest
- authentication. Arguments:
-
- realm: The authentication realm.
-
- secrets: SecretProvider which must return HA1 digests for the same
- realm as above.
-*/
+// Wrap returns an http.HandlerFunc wraps AuthenticatedHandlerFunc
+// with this DigestAuth authentication checks. Once the request
+// contains valid credentials, it calls wrapped
+// AuthenticatedHandlerFunc.
+//
+// Deprecated: new code should use NewContext instead.
 func (da *DigestAuth) Wrap(wrapped AuthenticatedHandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if username, authinfo := da.CheckAuth(r); username == "" {
@@ -240,11 +235,12 @@ func (da *DigestAuth) Wrap(wrapped AuthenticatedHandlerFunc) http.HandlerFunc {
 	}
 }
 
-/*
- JustCheck returns function which converts an http.HandlerFunc into a
- http.HandlerFunc which requires authentication. Username is passed as
- an extra X-Authenticated-Username header.
-*/
+// JustCheck returns a new http.HandlerFunc, which requires
+// DigestAuth to successfully authenticate a user before calling
+// wrapped http.HandlerFunc.
+//
+// Authenticated Username is passed as an extra
+// X-Authenticated-Username header to the wrapped HandlerFunc.
 func (da *DigestAuth) JustCheck(wrapped http.HandlerFunc) http.HandlerFunc {
 	return da.Wrap(func(w http.ResponseWriter, ar *AuthenticatedRequest) {
 		ar.Header.Set(AuthUsernameHeader, ar.Username)
