@@ -1,31 +1,12 @@
 package auth
 
 import "crypto/md5"
-import "strings"
 
 const itoa64 = "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 
-var md5_crypt_swaps = [16]int{12, 6, 0, 13, 7, 1, 14, 8, 2, 15, 9, 3, 5, 10, 4, 11}
+var md5CryptSwaps = [16]int{12, 6, 0, 13, 7, 1, 14, 8, 2, 15, 9, 3, 5, 10, 4, 11}
 
-type MD5Entry struct {
-	Magic, Salt, Hash []byte
-}
-
-func NewMD5Entry(e string) *MD5Entry {
-	parts := strings.SplitN(e, "$", 4)
-	if len(parts) != 4 {
-		return nil
-	}
-	return &MD5Entry{
-		Magic: []byte("$" + parts[1] + "$"),
-		Salt:  []byte(parts[2]),
-		Hash:  []byte(parts[3]),
-	}
-}
-
-/*
- MD5 password crypt implementation
-*/
+// MD5Crypt is the MD5 password crypt implementation.
 func MD5Crypt(password, salt, magic []byte) []byte {
 	d := md5.New()
 
@@ -79,7 +60,7 @@ func MD5Crypt(password, salt, magic []byte) []byte {
 	result := make([]byte, 0, 22)
 	v := uint(0)
 	bits := uint(0)
-	for _, i := range md5_crypt_swaps {
+	for _, i := range md5CryptSwaps {
 		v |= (uint(final[i]) << bits)
 		for bits = bits + 8; bits > 6; bits -= 6 {
 			result = append(result, itoa64[v&0x3f])
