@@ -250,9 +250,9 @@ func (da *DigestAuth) JustCheck(wrapped http.HandlerFunc) http.HandlerFunc {
 
 // NewContext returns a context carrying authentication information for the request.
 func (da *DigestAuth) NewContext(ctx context.Context, r *http.Request) context.Context {
+	username, authinfo := da.CheckAuth(r)
 	da.mutex.Lock()
 	defer da.mutex.Unlock()
-	username, authinfo := da.CheckAuth(r)
 	info := &Info{Username: username, ResponseHeaders: make(http.Header)}
 	if username != "" {
 		info.Authenticated = true
