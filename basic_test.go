@@ -79,7 +79,6 @@ func TestBasicAuthContext(t *testing.T) {
 		fmt.Fprint(w, authInfo.Username)
 	}))
 	defer ts.Close()
-	client := ts.Client()
 	for _, tt := range []struct {
 		username, password string
 		want               int
@@ -92,7 +91,7 @@ func TestBasicAuthContext(t *testing.T) {
 			t.Fatal(err)
 		}
 		r.SetBasicAuth(tt.username, tt.password)
-		resp, err := client.Do(r)
+		resp, err := http.DefaultClient.Do(r)
 		if err != nil {
 			t.Fatalf("HTTP request failed: %v", err)
 		}
