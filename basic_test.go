@@ -8,10 +8,13 @@ import (
 )
 
 var basicSecrets = map[string]string{
-	"test":   "{SHA}qvTGHdzF6KLavt4PO0gs2a6pQ00=",
-	"test2":  "$apr1$a0j62R97$mYqFkloXH0/UOaUnAiV2b0",
-	"test16": "$apr1$JI4wh3am$AmhephVqLTUyAVpFQeHZC0",
-	"test3":  "$2y$05$ih3C91zUBSTFcAh2mQnZYuob0UOZVEf16wl/ukgjDhjvj.xgM1WwS",
+	"test":          "{SHA}qvTGHdzF6KLavt4PO0gs2a6pQ00=",
+	"test2":         "$apr1$a0j62R97$mYqFkloXH0/UOaUnAiV2b0",
+	"test16":        "$apr1$JI4wh3am$AmhephVqLTUyAVpFQeHZC0",
+	"test3":         "$2y$05$ih3C91zUBSTFcAh2mQnZYuob0UOZVEf16wl/ukgjDhjvj.xgM1WwS",
+	"testsha":       "{SHA}qvTGHdzF6KLavt4PO0gs2a6pQ00=",
+	"testmd5":       "$apr1$0.KbAJur$4G9MiqUjDLCuihkMfmg6e1",
+	"testmd5broken": "$apr10.KbAJur$4G9MiqUjDLCuihkMfmg6e1",
 }
 
 type credentials struct {
@@ -85,6 +88,43 @@ func TestBasicAuthContext(t *testing.T) {
 	}{
 		{"", "", http.StatusUnauthorized},
 		{"test", "hello", http.StatusOK},
+		{"testmd5", "hello", http.StatusOK},
+		{"testmd5broken", "hello", http.StatusUnauthorized},
+		{"testmd5", "invalid", http.StatusUnauthorized},
+	} {
+		r, err := http.NewRequest("GET", ts.URL, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.SetBasicAuth(tt.username, tt.password)
+		resp, err := http.DefaultClient.Do(r)
+		if err != nil {
+			t.Fatalf("HTTP request failed: %v", err)
+		}
+		if resp.StatusCode != tt.want {
+			t.Errorf("user %q, password %q: got status %d, want %d", tt.username, tt.password, resp.StatusCode, tt.want)
+		}
+	}
+}
+
+func TestBasicAuthWrap(t *testing.T) {
+	t.Parallel()
+	a := NewBasicAuthenticator("example.com", basicProvider)
+	ts := httptest.NewServer(http.HandlerFunc(a.Wrap(func(w http.ResponseWriter, r *AuthenticatedRequest) {
+		if r.Username == "" {
+			http.Error(w, "error", http.StatusUnauthorized)
+			return
+		}
+		fmt.Fprint(w, r.Username)
+	})))
+	defer ts.Close()
+	for _, tt := range []struct {
+		username, password string
+		want               int
+	}{
+		{"", "", http.StatusUnauthorized},
+		{"testsha", "invalid", http.StatusUnauthorized},
+		{"testsha", "hello", http.StatusOK},
 	} {
 		r, err := http.NewRequest("GET", ts.URL, nil)
 		if err != nil {
