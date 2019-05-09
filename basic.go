@@ -2,6 +2,7 @@ package auth
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha1"
 	"crypto/subtle"
 	"encoding/base64"
@@ -10,7 +11,6 @@ import (
 	"strings"
 
 	"golang.org/x/crypto/bcrypt"
-	"golang.org/x/net/context"
 )
 
 type compareFunc func(hashedPassword, password []byte) error

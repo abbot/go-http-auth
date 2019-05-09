@@ -11,11 +11,11 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
 	auth ".."
-	"golang.org/x/net/context"
 )
 
 func secret(user, realm string) string {
