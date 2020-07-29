@@ -1,6 +1,7 @@
 package auth
 
 import (
+	//	"fmt"
 	"net/http"
 	"net/url"
 	"testing"
@@ -75,4 +76,29 @@ func TestDigestAuthParams(t *testing.T) {
 	if params["uri"] != want {
 		t.Fatalf("failed to parse uri with embedded commas, got %q want %q", params["uri"], want)
 	}
+}
+
+// TestDigestPurge tests that when we purge clients from the authenticator we do not purge
+// more cache entries than the number of clients we have received.
+// This is to avoid regressing and hitting a "slice bounds out of range" panic.
+func TestDigestPurge(t *testing.T) {
+	t.Parallel()
+	// Creating dummy clients for the digest authenticator.
+	nClients := 10
+	clients := make(map[string]*digestClient, nClients)
+	for i := 0; i < nClients; i++ {
+		clients[string(i)] = &digestClient{}
+	}
+
+	secrets := HtdigestFileProvider("test.htdigest")
+	da := &DigestAuth{
+		Opaque:  "U7H+ier3Ae8Skd/g",
+		Realm:   "example.com",
+		Secrets: secrets,
+		clients: clients,
+	}
+
+	// Purging more than the number of clients we have stored in the
+	// digest authenticator.
+	da.Purge(nClients * 2)
 }

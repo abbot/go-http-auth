@@ -81,12 +81,7 @@ func (da *DigestAuth) Purge(count int) {
 	cache := digestCache(entries)
 	sort.Sort(cache)
 
-	limit := count
-	if len(cache) < count {
-		limit = len(cache) - 1
-	}
-
-	for _, client := range cache[:limit] {
+	for _, client := range cache {
 		delete(da.clients, client.nonce)
 	}
 }
