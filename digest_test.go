@@ -1,7 +1,6 @@
 package auth
 
 import (
-	//	"fmt"
 	"net/http"
 	"net/url"
 	"testing"
