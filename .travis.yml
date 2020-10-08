@@ -8,11 +8,6 @@ go:
   - 1.11.x
   - master
   
-jobs:
-  exclude:
-  - arch: ppc64le
-    go: 1.8.x
-
 install:
   - go get -t -v ./...
 
@@ -23,3 +18,6 @@ matrix:
   allow_failures:
     - go: master
   fast_finish: true
+  exclude:
+  - arch: ppc64le
+    go: 1.8.x
