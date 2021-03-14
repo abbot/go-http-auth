@@ -81,7 +81,7 @@ func ParseList(value string) []string {
 func ParsePairs(value string) map[string]string {
 	m := make(map[string]string)
 	for _, pair := range ParseList(strings.TrimSpace(value)) {
-		if i := strings.Index(pair, "="); i < 0 || i == len(pair)-1{
+		if i := strings.Index(pair, "="); i < 0 || i == len(pair)-1 {
 			m[pair] = ""
 		} else {
 			v := pair[i+1:]
