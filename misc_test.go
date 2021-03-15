@@ -17,7 +17,7 @@ func TestH(t *testing.T) {
 
 func TestParsePairs(t *testing.T) {
 	t.Parallel()
-	const header = `username="\test", realm="a \"quoted\" string", nonce="FRPnGdb8lvM1UHhi", uri="/css?family=Source+Sans+Pro:400,700,400italic,700italic|Source+Code+Pro", algorithm=MD5, response="fdcdd78e5b306ffed343d0ec3967f2e5", opaque="lEgVjogmIar2fg/t", qop=auth, nc=00000001, cnonce="e76b05db27a3b323"`
+	const header = `username="\test", realm="a \"quoted\" string", nonce="FRPnGdb8lvM1UHhi", uri="/css?family=Source+Sans+Pro:400,700,400italic,700italic|Source+Code+Pro", algorithm=MD5, response="fdcdd78e5b306ffed343d0ec3967f2e5", opaque="lEgVjogmIar2fg/t", qop=auth, nc=00000001, cnonce="e76b05db27a3b323", empty1=, empty2=""`
 
 	want := map[string]string{
 		"username":  "test",
@@ -30,6 +30,8 @@ func TestParsePairs(t *testing.T) {
 		"qop":       "auth",
 		"nc":        "00000001",
 		"cnonce":    "e76b05db27a3b323",
+		"empty1":    "",
+		"empty2":    "",
 	}
 	got := ParsePairs(header)
 
