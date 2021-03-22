@@ -81,9 +81,14 @@ func ParseList(value string) []string {
 func ParsePairs(value string) map[string]string {
 	m := make(map[string]string)
 	for _, pair := range ParseList(strings.TrimSpace(value)) {
-		if i := strings.Index(pair, "="); i < 0 {
+		switch i := strings.Index(pair, "="); {
+		case i < 0:
+			// No '=' in pair, treat whole string as a 'key'.
 			m[pair] = ""
-		} else {
+		case i == len(pair)-1:
+			// Malformed pair ('key=' with no value), keep key with empty value.
+			m[pair[:i]] = ""
+		default:
 			v := pair[i+1:]
 			if v[0] == '"' && v[len(v)-1] == '"' {
 				// Unquote it.
