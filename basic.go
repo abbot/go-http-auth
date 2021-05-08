@@ -3,7 +3,7 @@ package auth
 import (
 	"bytes"
 	"context"
-	"crypto/sha1"
+	"crypto"
 	"crypto/subtle"
 	"encoding/base64"
 	"errors"
@@ -24,6 +24,8 @@ var (
 	}{
 		{"", compareMD5HashAndPassword}, // default compareFunc
 		{"{SHA}", compareShaHashAndPassword},
+		{"{SHA256}", compareSha256HashAndPassword},
+		{"{SHA512}", compareSha512HashAndPassword},
 		// Bcrypt is complicated. According to crypt(3) from
 		// crypt_blowfish version 1.3 (fetched from
 		// http://www.openwall.com/crypt/crypt_blowfish-1.3.tar.gz), there
@@ -94,10 +96,22 @@ func CheckSecret(password, secret string) bool {
 	return compare([]byte(secret), []byte(password)) == nil
 }
 
+func compareSha512HashAndPassword(hashedPassword, password []byte) error {
+	return compareShaXHashAndPassword(crypto.SHA512, "{SHA512}", hashedPassword, password)
+}
+
+func compareSha256HashAndPassword(hashedPassword, password []byte) error {
+	return compareShaXHashAndPassword(crypto.SHA256, "{SHA256}", hashedPassword, password)
+}
+
 func compareShaHashAndPassword(hashedPassword, password []byte) error {
-	d := sha1.New()
+	return compareShaXHashAndPassword(crypto.SHA1, "{SHA}", hashedPassword, password)
+}
+
+func compareShaXHashAndPassword(hash crypto.Hash, prefix string, hashedPassword, password []byte) error {
+	d := hash.New()
 	d.Write(password)
-	if subtle.ConstantTimeCompare(hashedPassword[5:], []byte(base64.StdEncoding.EncodeToString(d.Sum(nil)))) != 1 {
+	if subtle.ConstantTimeCompare(hashedPassword[len(prefix):], []byte(base64.StdEncoding.EncodeToString(d.Sum(nil)))) != 1 {
 		return errMismatchedHashAndPassword
 	}
 	return nil
