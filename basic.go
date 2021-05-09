@@ -22,9 +22,9 @@ const (
 	shaEncoding      = "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 	cryptPassDelim   = "$"
 	cryptPassRounds  = "rounds="
-	shaRoundsDefault = uint(5_000)
-	shaRoundsMin     = uint(1_000)
-	shaRoundsMax     = uint(999_999_999)
+	shaRoundsDefault = uint(5000)
+	shaRoundsMin     = uint(1000)
+	shaRoundsMax     = uint(999999999)
 )
 
 var (
