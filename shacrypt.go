@@ -57,26 +57,27 @@ func SHACrypt(hash crypto.Hash, password, salt, magic []byte, rounds uint, defau
 	A.Write(password)
 	A.Write(salt)
 
+	intermediate := make([]byte, 0, hash.Size())
 	// #4 - #8
 	B := hash.New()
 	B.Write(password)
 	B.Write(salt)
 	B.Write(password)
-	BDigest := B.Sum(nil)
+	intermediate = B.Sum(intermediate[:0])
 
 	// #9
 	i := len(password)
 	for ; i > hash.Size(); i -= hash.Size() {
-		A.Write(BDigest)
+		A.Write(intermediate)
 	}
 	// #10
-	A.Write(BDigest[:i])
+	A.Write(intermediate[:i])
 
 	// #11
 	for i = len(password); i > 0; i >>= 1 {
 		// last bit is set to 1
 		if i&1 != 0 {
-			A.Write(BDigest)
+			A.Write(intermediate)
 		} else {
 			A.Write(password)
 		}
@@ -86,40 +87,43 @@ func SHACrypt(hash crypto.Hash, password, salt, magic []byte, rounds uint, defau
 	ADigest := A.Sum(nil)
 
 	// #13 - #15
-	DP := hash.New()
+	B.Reset()
+	DP := B
 	for i = 0; i < len(password); i++ {
 		DP.Write(password)
 	}
-	DPDigest := DP.Sum(nil)
+	intermediate = DP.Sum(intermediate[:0])
 
 	// #16
 	i = len(password)
 	P := make([]byte, 0, i)
 	for ; i > hash.Size(); i -= hash.Size() {
-		P = append(P, DPDigest...)
+		P = append(P, intermediate...)
 	}
-	P = append(P, DPDigest[:i]...)
+	P = append(P, intermediate[:i]...)
 
 	// #17 - #19
-	DS := hash.New()
+	B.Reset()
+	DS := B
 	times := 16 + uint8(ADigest[0])
 	for ; times > 0; times-- {
 		DS.Write(salt)
 	}
-	DSDigest := DS.Sum(nil)
+	intermediate = DS.Sum(intermediate[:0])
 
 	// #20
 	i = len(salt)
 	S := make([]byte, 0, i)
 	for ; i > hash.Size(); i -= hash.Size() {
-		S = append(S, DSDigest...)
+		S = append(S, intermediate...)
 	}
-	S = append(S, DSDigest[:i]...)
+	S = append(S, intermediate[:i]...)
 
 	// #21
-	var finalDigest = ADigest
+	finalDigest := append(intermediate[:0], ADigest...)
 	for rCount := uint(0); rCount < rounds; rCount++ {
-		R := hash.New()
+		B.Reset()
+		R := B
 		var seq []byte
 		if rCount%2 != 0 {
 			seq = P
@@ -138,8 +142,7 @@ func SHACrypt(hash crypto.Hash, password, salt, magic []byte, rounds uint, defau
 		} else {
 			R.Write(P)
 		}
-		RDigest := R.Sum(nil)
-		finalDigest = RDigest
+		finalDigest = R.Sum(finalDigest[:0])
 	}
 
 	mapping, err := getSwapBytes(string(magic))
@@ -147,29 +150,28 @@ func SHACrypt(hash crypto.Hash, password, salt, magic []byte, rounds uint, defau
 		return nil, missingByteSwapMapperError
 	}
 
+	digestLength := encodedLength(hash)
+	result := make([]byte, 0, 37+digestLength)
+	// #22 a)
+	result = append(result, magic...)
+	// #22 b)
+	if !defaultRounds {
+		result = append(strconv.AppendUint(append(result, []byte("rounds")...), uint64(rounds), 10), cryptPassDelim...)
+	}
+	// #22 c) + d)
+	result = append(append(result, salt[:16]...), cryptPassDelim...)
+	// #22 e) result
 	// base64 encode following sha-crypt rules [#22 e)]
-	encoded := make([]byte, 0, encodedLength(hash))
 	v := uint(0)
 	bits := uint(0)
 	for _, idx := range mapping {
 		v |= uint(finalDigest[idx]) << bits
 		for bits = bits + 8; bits > 6; bits -= 6 {
-			encoded = append(encoded, shaEncoding[v&0x3f])
+			result = append(result, shaEncoding[v&0x3f])
 			v >>= 6
 		}
 	}
-	encoded = append(encoded, shaEncoding[v&0x3f])
-
-	// #22 a)
-	result := magic
-	// #22 b)
-	if !defaultRounds {
-		result = append(append(result, strconv.AppendUint([]byte("rounds="), uint64(rounds), 10)...), cryptPassDelim...)
-	}
-	// #22 c) + d)
-	result = append(append(result, salt[:16]...), cryptPassDelim...)
-	// #22 e) result
-	result = append(result, encoded...)
+	result = append(result, shaEncoding[v&0x3f])
 
 	return result, nil
 }
@@ -209,7 +211,8 @@ func DissectShaCryptHash(hashedPassword []byte) (*SHAHash, error) {
 		}
 	}
 
-	magic := append(append(append([]byte{}, cryptPassDelim...), parts[1]...), cryptPassDelim...)
+	magic := make([]byte, 0, 2*len(cryptPassDelim) + len(parts[1]))
+	magic = append(append(append(magic, cryptPassDelim...), parts[1]...), cryptPassDelim...)
 
 	if hash, err := getHash(string(magic)); err != nil {
 		return nil, cryptPassStructureError
