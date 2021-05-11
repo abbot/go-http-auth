@@ -15,6 +15,8 @@ var basicSecrets = map[string]string{
 	"testsha":       "{SHA}qvTGHdzF6KLavt4PO0gs2a6pQ00=",
 	"testmd5":       "$apr1$0.KbAJur$4G9MiqUjDLCuihkMfmg6e1",
 	"testmd5broken": "$apr10.KbAJur$4G9MiqUjDLCuihkMfmg6e1",
+	"testsha256":    "$5$Eg2QLTpmL3TegBv7$h8PsM/fa1xxOXmhUWWIQvV8.BVl9o3vax2S0C4C7Km3",
+	"testsha512":    "$6$uqVy33l0y9YMJV15$UeR3rqmGvrgmc6cn6ZMKUrUqH9YBdrCbjTQK3K2gvprRWay45S6TC3fGQX4Ml4RY8cqkQ2f9CFqFmV02pyGhx.",
 }
 
 type credentials struct {
@@ -125,6 +127,10 @@ func TestBasicAuthWrap(t *testing.T) {
 		{"", "", http.StatusUnauthorized},
 		{"testsha", "invalid", http.StatusUnauthorized},
 		{"testsha", "hello", http.StatusOK},
+		{"testsha256", "invalid", http.StatusUnauthorized},
+		{"testsha256", "hello", http.StatusOK},
+		{"testsha512", "invalid", http.StatusUnauthorized},
+		{"testsha512", "hello", http.StatusOK},
 	} {
 		r, err := http.NewRequest("GET", ts.URL, nil)
 		if err != nil {
@@ -151,6 +157,10 @@ func TestCheckSecret(t *testing.T) {
 		{"openssl-md5", "$1$mvmz31IB$U9KpHBLegga2doA0e3s3N0"},
 		{"htpasswd-sha", "{SHA}vFznddje0Ht4+pmO0FaxwrUKN/M="},
 		{"htpasswd-bcrypt", "$2y$10$Q6GeMFPd0dAxhQULPDdAn.DFy6NDmLaU0A7e2XoJz7PFYAEADFKbC"},
+		{"openssl-sha256", "$5$qgB401R/ggz11Q5U$QAsQZuMF.xfkj7A0QrEvWpYgcStxtU8V3Wj5DSLOSI0"},
+		{"openssl-sha512", "$6$lseRR5fEdsK0sOkR$QTkArA5Z/arPmd78I7qmi8Wj/4bc8CbNw0FH59SYVXCfesr.AqOJINkGx/aaZ6gKYDbmYeFPSSMjMFW9HrMwR."},
+		{"0123456789012345678901234567890123456789", "$5$Kpm4hE9Eu9MU.vG8$G8z0lSskQaziCzlCbHSEDmoYr3kLhd7ineD3p0RiWD8"},
+		{"01234567890123456789012345678901234567890123456789012345678901234567890123456789", "$6$U1JDv/VIVgQ103od$4oHmr5qqJIJExEZfLzz0z3VfNznjcxTIL7c1RACsBWJnk/FPAc/oHwFGLZ0OJQaN.obx/2NdwYlGuiGu4KJ5K/"},
 		// common bcrypt test vectors
 		{"", "$2a$06$DCq7YPn5Rq63x1Lad4cll.TV4S6ytwfsfvkgY8jIucDrjc8deX1s."},
 		{"", "$2a$08$HqWuK6/Ng6sg9gQzbLrgb.Tl.ZHfXLhvt/SgVyWhQqgqcZ7ZuUtye"},
@@ -193,3 +203,4 @@ func TestCheckSecret(t *testing.T) {
 		})
 	}
 }
+
