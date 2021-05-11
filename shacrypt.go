@@ -18,7 +18,7 @@ type SHAHash struct {
 
 type SHACryptAlgo struct {
 	algo  crypto.Hash
-	swaps []uint
+	swaps []uint8
 }
 
 const (
@@ -31,12 +31,12 @@ const (
 )
 
 var (
-	shaCryptAlgo = map[string]SHACryptAlgo{
-		"$5$": {crypto.SHA256, []uint{
+	shaCryptAlgo = map[string]*SHACryptAlgo{
+		"$5$": {crypto.SHA256, []uint8{
 			20, 10, 0, 11, 1, 21, 2, 22, 12, 23, 13, 3, 14, 4, 24, 5, 25, 15,
 			26, 16, 6, 17, 7, 27, 8, 28, 18, 29, 19, 9, 30, 31,
 		}},
-		"$6$": {crypto.SHA512, []uint{
+		"$6$": {crypto.SHA512, []uint8{
 			42, 21, 0, 1, 43, 22, 23, 2, 44, 45, 24, 3, 4, 46, 25, 26, 5, 47,
 			48, 27, 6, 7, 49, 28, 29, 8, 50, 51, 30, 9, 10, 52, 31, 32, 11, 53,
 			54, 33, 12, 13, 55, 34, 35, 14, 56, 57, 36, 15, 16, 58, 37, 38, 17, 59,
@@ -237,7 +237,7 @@ func getHash(magic string) (crypto.Hash, error) {
 	return 0, errors.New("unable to gather hash algorithm")
 }
 
-func getSwapBytes(magic string) ([]uint, error) {
+func getSwapBytes(magic string) ([]uint8, error) {
 	if a, ok := shaCryptAlgo[magic]; ok {
 		return a.swaps, nil
 	}
