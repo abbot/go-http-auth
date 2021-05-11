@@ -142,16 +142,13 @@ func SHACrypt(hash crypto.Hash, password, salt, magic []byte, rounds uint, defau
 		finalDigest = RDigest
 	}
 
-	var ok bool
-	var algo SHACryptAlgo
-	if algo, ok = shaCryptAlgo[string(magic)]; !ok {
+	mapping, err := getSwapBytes(string(magic))
+	if err != nil {
 		return nil, missingByteSwapMapperError
 	}
 
-	mapping := algo.swaps
-
 	// base64 encode following sha-crypt rules [#22 e)]
-	encoded := make([]byte, 0, ((len(finalDigest)*8)+5)/6)
+	encoded := make([]byte, 0, encodedLength(hash))
 	v := uint(0)
 	bits := uint(0)
 	for _, idx := range mapping {
@@ -214,13 +211,35 @@ func DissectShaCryptHash(hashedPassword []byte) (*SHAHash, error) {
 
 	magic := append(append(append([]byte{}, cryptPassDelim...), parts[1]...), cryptPassDelim...)
 
-	if hash, ok := shaCryptAlgo[string(magic)]; !ok {
+	if hash, err := getHash(string(magic)); err != nil {
 		return nil, cryptPassStructureError
 	} else {
 		salt := parts[2+offset]
 		digest := parts[3+offset]
 
-		result := SHAHash{hash.algo, magic, rounds, defaultRounds, salt, digest}
+		if len(digest) != encodedLength(hash) {
+			return nil, cryptPassStructureError
+		}
+
+		result := SHAHash{hash, magic, rounds, defaultRounds, salt, digest}
 		return &result, nil
 	}
+}
+
+func encodedLength(h crypto.Hash) int {
+	return ((h.Size() * 8) + 5) / 6
+}
+
+func getHash(magic string) (crypto.Hash, error) {
+	if a, ok := shaCryptAlgo[magic]; ok {
+		return a.algo, nil
+	}
+	return 0, errors.New("unable to gather hash algorithm")
+}
+
+func getSwapBytes(magic string) ([]uint, error) {
+	if a, ok := shaCryptAlgo[magic]; ok {
+		return a.swaps, nil
+	}
+	return nil, errors.New("unable to gather hash specific bytes swapping")
 }
