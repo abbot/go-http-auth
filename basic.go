@@ -24,6 +24,8 @@ var (
 	}{
 		{"", compareMD5HashAndPassword}, // default compareFunc
 		{"{SHA}", compareShaHashAndPassword},
+		{"$5$", compareShaCryptHashAndPassword},
+		{"$6$", compareShaCryptHashAndPassword},
 		// Bcrypt is complicated. According to crypt(3) from
 		// crypt_blowfish version 1.3 (fetched from
 		// http://www.openwall.com/crypt/crypt_blowfish-1.3.tar.gz), there
@@ -100,6 +102,20 @@ func compareShaHashAndPassword(hashedPassword, password []byte) error {
 	if subtle.ConstantTimeCompare(hashedPassword[5:], []byte(base64.StdEncoding.EncodeToString(d.Sum(nil)))) != 1 {
 		return errMismatchedHashAndPassword
 	}
+	return nil
+}
+
+func compareShaCryptHashAndPassword(hashedPassword, password []byte) error {
+	hash, err := DissectShaCryptHash(hashedPassword)
+	if err != nil {
+		return errMismatchedHashAndPassword
+	}
+
+	result, err := SHACrypt(hash.Hash, password, hash.Salt, hash.Magic, hash.Rounds, hash.DefaultRounds)
+	if err != nil || subtle.ConstantTimeCompare(hashedPassword, result) != 1 {
+		return errMismatchedHashAndPassword
+	}
+
 	return nil
 }
 
