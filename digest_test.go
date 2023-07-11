@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	"testing"
@@ -86,7 +87,7 @@ func TestDigestPurge(t *testing.T) {
 	nClients := 10
 	clients := make(map[string]*digestClient, nClients)
 	for i := 0; i < nClients; i++ {
-		clients[string(i)] = &digestClient{}
+		clients[fmt.Sprintf("%d", i)] = &digestClient{}
 	}
 
 	secrets := HtdigestFileProvider("test.htdigest")
