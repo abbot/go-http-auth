@@ -1,9 +1,14 @@
 package auth
 
 import (
+<<<<<<< HEAD
 	"fmt"
+=======
+	"context"
+>>>>>>> upstream/master
 	"net/http"
 	"net/url"
+	"sync"
 	"testing"
 	"time"
 )
@@ -101,4 +106,45 @@ func TestDigestPurge(t *testing.T) {
 	// Purging more than the number of clients we have stored in the
 	// digest authenticator.
 	da.Purge(nClients * 2)
+}
+
+func TestNewContextNoDeadlock(t *testing.T) {
+	t.Parallel()
+	const (
+		realm = "example.com"
+		user  = "user"
+	)
+	secrets := func(u, r string) string {
+		if u == user && r == realm {
+			return "aa78524fceb0e50fd8ca96dd818b8cf9"
+		}
+		return ""
+	}
+	da := NewDigestAuthenticator(realm, secrets)
+	da.ClientCacheSize = 10
+	da.ClientCacheTolerance = 1
+	var wg sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		ctx := context.Background()
+		req, err := http.NewRequest("GET", "/", nil)
+		if err != nil {
+			t.Fatalf("Failed to create http.Request: %v", err)
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			done := make(chan struct{})
+			go func() {
+				da.NewContext(ctx, req)
+				close(done)
+			}()
+			select {
+			case <-done:
+				return
+			case <-time.After(time.Second):
+				t.Error("deadlock detected")
+			}
+		}()
+	}
+	wg.Wait()
 }

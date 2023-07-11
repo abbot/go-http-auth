@@ -1,0 +1,28 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  schedule:
+    - cron: '16 3 * * 1'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        go_version: ['1.14', '1.17', '>=1.17']
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Go ${{matrix.go_version}}
+      uses: actions/setup-go@v2
+      with:
+        go-version: ${{ matrix.go_version }}
+    - name: Build
+      run: go build -v ./...
+    - name: Test
+      run: go test -v ./...

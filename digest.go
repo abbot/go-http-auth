@@ -72,7 +72,11 @@ func (c digestCache) Swap(i, j int) {
 // Purge removes count oldest entries from DigestAuth.clients
 func (da *DigestAuth) Purge(count int) {
 	da.mutex.Lock()
-	defer da.mutex.Unlock()
+	da.purgeLocked(count)
+	da.mutex.Unlock()
+}
+
+func (da *DigestAuth) purgeLocked(count int) {
 	entries := make([]digestCacheEntry, 0, len(da.clients))
 	for nonce, client := range da.clients {
 		entries = append(entries, digestCacheEntry{nonce, client.lastSeen})
@@ -264,7 +268,7 @@ func (da *DigestAuth) NewContext(ctx context.Context, r *http.Request) context.C
 	} else {
 		// return back digest WWW-Authenticate header
 		if len(da.clients) > da.ClientCacheSize+da.ClientCacheTolerance {
-			da.Purge(da.ClientCacheTolerance * 2)
+			da.purgeLocked(da.ClientCacheTolerance * 2)
 		}
 		nonce := RandomKey()
 		da.clients[nonce] = &digestClient{nc: 0, lastSeen: time.Now().UnixNano()}
