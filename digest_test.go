@@ -1,11 +1,8 @@
 package auth
 
 import (
-<<<<<<< HEAD
 	"fmt"
-=======
 	"context"
->>>>>>> upstream/master
 	"net/http"
 	"net/url"
 	"sync"
